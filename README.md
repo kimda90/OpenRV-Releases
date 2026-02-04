@@ -51,7 +51,7 @@ docker run --rm -e OPENRV_TAG=v3.2.1 -e DISTRO_SUFFIX=linux-ubuntu22.04 -v "$(pw
 ### Windows
 
 1. **Prerequisites**: Visual Studio 2022 (Desktop C++, MSVC v143 14.40), Python 3.11 (as `python3.exe`), CMake 3.27+, Qt 6.5.3 (MSVC 2019 64-bit), Strawberry Perl, Rust 1.92+, MSYS2 with **MinGW64** and the pacman packages listed in the [OpenRV Windows docs](https://aswf-openrv.readthedocs.io/en/latest/build_system/config_windows.html) (autotools, glew, libarchive, make, meson, toolchain, autoconf, automake, bison, flex, git, libtool, nasm, p7zip, patch, unzip, zip).
-2. **PATH order** (in the shell that runs the build): CMake → Python → Rust (`.cargo/bin`) → `msys64\mingw64\bin` → … → **Strawberry Perl last**. Set `ACLOCAL_PATH=/c/msys64/usr/share/aclocal` and `MSYSTEM=MINGW64` when using MSYS2 bash.
+2. **PATH order** (in the shell that runs the build): CMake → Python → Rust (`.cargo/bin`) → `msys64\mingw64\bin` → … → **Strawberry Perl last**. Set `ACLOCAL_PATH=/c/msys64/usr/share/aclocal` and `MSYSTEM=MINGW64` when using MSYS2 bash. **OpenSSL** is built from source by OpenRV and requires **Strawberry Perl** (`WIN_PERL` / `RV_DEPS_WIN_PERL_ROOT`); the CI sets these and uses `setup-msbuild` so `nmake` is available. For Python wheel build issues (e.g. OpenTimelineIO FileTracker errors), CI sets `CL=/FS` and `DISTUTILS_USE_SDK=1`.
 3. Clone OpenRV to a **short path** (e.g. `C:\OpenRV`) to avoid path length limits.
 4. From PowerShell (with `QT_HOME`, `WIN_PERL`, and `PATH` set as above):
    ```powershell

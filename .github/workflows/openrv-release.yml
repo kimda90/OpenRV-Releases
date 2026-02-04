@@ -114,9 +114,15 @@ jobs:
           # OpenRV Windows docs: use MSYS2 MinGW64; install exact pacman list from config_windows.html
           bash -lc "pacman -Sy --noconfirm --needed mingw-w64-x86_64-autotools mingw-w64-x86_64-glew mingw-w64-x86_64-libarchive mingw-w64-x86_64-make mingw-w64-x86_64-meson mingw-w64-x86_64-toolchain autoconf automake bison flex git libtool nasm p7zip patch unzip zip"
 
+      - name: Setup MSVC (nmake for OpenSSL build)
+        uses: microsoft/setup-msbuild@v2
+        with:
+          vs-version: '[17.0, 18.0)'
+
       - name: Build OpenRV (Windows)
         run: |
-          # PATH order per OpenRV docs: CMake, Python, Rust, MSYS2 mingw64/bin, then rest, Strawberry last
+          # PATH order per OpenRV docs: CMake, Python, Rust, MSYS2 mingw64/bin, then rest, Strawberry last.
+          # Keep VS in PATH so OpenSSL build (make_openssl.py -> nmake) and Python wheel builds can find cl/nmake.
           $cmakeBin = "C:\Program Files\CMake\bin"
           $pyBin = (Split-Path (Get-Command python).Source)
           $env:Path = "$cmakeBin;$pyBin;$env:USERPROFILE\.cargo\bin;C:\msys64\mingw64\bin;C:\msys64\usr\bin;$env:Path;C:\Strawberry\perl\bin"
@@ -124,6 +130,9 @@ jobs:
           $env:BASH_EXE = "C:\msys64\usr\bin\bash.exe"
           $env:WIN_PERL = "C:/Strawberry/perl/bin"
           $env:MSYSTEM = "MINGW64"
+          # Mitigate Python wheel build errors (e.g. OpenTimelineIO) from MSVC FileTracker on Windows
+          $env:CL = "/FS"
+          $env:DISTUTILS_USE_SDK = "1"
           .\ci\windows\build_windows.ps1 -Tag '${{ env.OPENRV_TAG }}' -WorkDir "C:\OpenRV"
         shell: pwsh
 

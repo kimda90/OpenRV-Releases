@@ -61,6 +61,7 @@ $env:RV_BUILD_TYPE = 'Release'
 
 # ACLOCAL_PATH required by OpenRV Windows build (config_windows.html)
 $aclocalPath = '/c/msys64/usr/share/aclocal'
+# OpenSSL build (openssl.cmake) requires RV_DEPS_WIN_PERL_ROOT; rvcfg passes it from WIN_PERL (Windows path for make_openssl.py)
 $winPerlBash = if ($env:WIN_PERL) { $env:WIN_PERL -replace '\\', '/' } else { 'C:/Strawberry/perl/bin' }
 $buildScript = @"
 set -e
@@ -70,7 +71,11 @@ export RV_VFX_PLATFORM=CY2024
 export RV_BUILD_TYPE=Release
 export QT_HOME='$qtHomeBash'
 export WIN_PERL='$winPerlBash'
+export RV_DEPS_WIN_PERL_ROOT='$winPerlBash'
 export ACLOCAL_PATH='$aclocalPath'
+# Mitigate MSVC FileTracker errors when building Python wheels (e.g. OpenTimelineIO)
+export CL='/FS'
+export DISTUTILS_USE_SDK=1
 source rvcmds.sh
 rvbootstrap
 "@
