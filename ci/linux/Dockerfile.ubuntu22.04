@@ -28,6 +28,7 @@ RUN apt-get update \
     liblzma-dev \
     libgl1-mesa-dev \
     libglu1-mesa-dev \
+    libosmesa6-dev \
     libncurses-dev \
     libnss3-dev \
     libreadline-dev \
@@ -44,6 +45,7 @@ RUN apt-get update \
     libxrender-dev \
     libxtst-dev \
     libxxf86vm-dev \
+    libvulkan-dev \
     meson \
     nasm \
     ninja-build \
@@ -61,6 +63,12 @@ RUN apt-get update \
 
 # Ensure Freetype is present (OpenRV src/pub/freetype); separate layer so cache doesn't skip it
 RUN apt-get update && apt-get install -y --no-install-recommends libfreetype6-dev && rm -rf /var/lib/apt/lists/*
+
+# Ensure OSMesa is present (FindOSMesa / TwkGLFMesa); separate layer so cache doesn't skip it
+RUN apt-get update && apt-get install -y --no-install-recommends libosmesa6-dev && rm -rf /var/lib/apt/lists/*
+
+# Ensure Vulkan is present (WrapVulkanHeaders / Vulkan_INCLUDE_DIR); separate layer so cache doesn't skip it
+RUN apt-get update && apt-get install -y --no-install-recommends libvulkan-dev && rm -rf /var/lib/apt/lists/*
 
 # CMake (Ubuntu 22.04 cmake may be too old)
 ENV CMAKE_VERSION=3.31.6

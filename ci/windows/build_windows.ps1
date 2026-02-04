@@ -82,9 +82,12 @@ rvbootstrap
 
 Write-Host "Running rvbootstrap in bash..."
 & $bashExe -c $buildScript
+if ($LASTEXITCODE -ne 0) {
+    throw "rvbootstrap failed with exit code $LASTEXITCODE. Check the log above for the first error."
+}
 
 $rvExe = Join-Path $WorkDir '_build\stage\app\bin\rv.exe'
 if (-not (Test-Path $rvExe)) {
-    throw "Post-build check failed: $rvExe not found"
+    throw "Post-build check failed: $rvExe not found (rvbootstrap may have exited 0 without building)."
 }
 Write-Host "Post-build check OK: $rvExe exists"

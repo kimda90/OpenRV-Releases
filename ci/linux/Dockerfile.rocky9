@@ -57,6 +57,8 @@ RUN dnf upgrade -y \
     readline-devel \
     sqlite-devel \
     unzip \
+    vulkan-headers \
+    vulkan-loader-devel \
     wget \
     xz-devel \
     yasm \
@@ -68,6 +70,12 @@ RUN dnf upgrade -y \
 
 # Ensure Freetype is present (OpenRV src/pub/freetype); separate layer so cache doesn't skip it
 RUN dnf install -y freetype-devel && dnf clean all && rm -rf /var/cache/dnf
+
+# Ensure OSMesa is present (FindOSMesa / TwkGLFMesa); separate layer so cache doesn't skip it
+RUN dnf install -y mesa-libOSMesa-devel && dnf clean all && rm -rf /var/cache/dnf
+
+# Ensure Vulkan is present (WrapVulkanHeaders / Vulkan_INCLUDE_DIR); separate layer so cache doesn't skip it
+RUN dnf install -y vulkan-headers vulkan-loader-devel && dnf clean all && rm -rf /var/cache/dnf
 
 # CMake
 RUN curl -sL "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.sh" -o cmake.sh \

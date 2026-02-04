@@ -33,12 +33,14 @@ export RV_BUILD_TYPE="${RV_BUILD_TYPE:-Release}"
 # Build using upstream scripts (expand_aliases so rvbootstrap alias works in non-interactive script)
 shopt -s expand_aliases 2>/dev/null || true
 source rvcmds.sh
-rvbootstrap
+rvbootstrap || build_failed=1
 
-# Post-build check
+# On failure or missing binary, dump error logs so CI shows the real error
 RV_BIN="_build/stage/app/bin/rv"
-if [[ ! -f "$RV_BIN" ]]; then
-  echo "Error: Expected binary not found: $RV_BIN" >&2
+if [[ -n "$build_failed" || ! -f "$RV_BIN" ]]; then
+  echo "Error: Build failed or expected binary not found: $RV_BIN" >&2
+  if [[ -f _build/error_summary.txt ]]; then echo "=== Build error summary ==="; cat _build/error_summary.txt; fi
+  if [[ -f _build/build_errors.log ]]; then echo "=== Last 120 lines of build_errors.log ==="; tail -120 _build/build_errors.log; fi
   exit 1
 fi
 echo "Post-build check OK: $RV_BIN exists"
