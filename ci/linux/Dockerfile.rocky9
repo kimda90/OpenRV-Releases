@@ -76,19 +76,15 @@ RUN curl -sL "https://github.com/ninja-build/ninja/releases/download/v${NINJA_VE
     && unzip ninja.zip -d /usr/local/bin \
     && rm ninja.zip
 
-# Python 3.11 via pyenv (Rocky 9 may not have 3.11 in base repos)
-RUN git clone https://github.com/pyenv/pyenv.git /opt/pyenv \
-    && /opt/pyenv/bin/pyenv install ${PYTHON_VERSION} \
-    && /opt/pyenv/bin/pyenv global ${PYTHON_VERSION}
-ENV PYENV_ROOT=/opt/pyenv
-ENV PATH="${PYENV_ROOT}/shims:${PYENV_ROOT}/bin:${PATH}"
-
-# Qt 6.5.3 via aqtinstall (standard layout so OpenRV accepts QT_HOME)
-# Use pyenv Python explicitly (system python3 has no pip on Rocky 9)
-RUN /opt/pyenv/versions/${PYTHON_VERSION}/bin/python3 -m ensurepip --upgrade \
-    && /opt/pyenv/versions/${PYTHON_VERSION}/bin/python3 -m pip install aqtinstall \
-    && /opt/pyenv/versions/${PYTHON_VERSION}/bin/python3 -m aqt install-qt linux desktop ${QT_VERSION} gcc_64 -O /opt/qt \
+# Python 3.11 via uv + Qt 6.5.3 via aqtinstall; symlink python3 so OpenRV build finds it
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && export PATH="/root/.local/bin:$PATH" \
+    && uv python install ${PYTHON_VERSION} \
+    && ln -sf "$(uv python find ${PYTHON_VERSION})" /usr/local/bin/python3 \
+    && uv run --python ${PYTHON_VERSION} -m pip install aqtinstall \
+    && uv run --python ${PYTHON_VERSION} -m aqt install-qt linux desktop ${QT_VERSION} gcc_64 -O /opt/qt \
     --archives qtbase qtdeclarative qtsvg qttools qttranslations qtwayland icu
+ENV PATH="/root/.local/bin:${PATH}"
 
 ENV QT_HOME=/opt/qt/6.5.3/gcc_64
 ENV PATH="${QT_HOME}/bin:${PATH}"

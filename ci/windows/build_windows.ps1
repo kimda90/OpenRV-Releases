@@ -68,6 +68,8 @@ export QT_HOME='$qtHomeBash'
 export WIN_PERL='$winPerlBash'
 export ACLOCAL_PATH='$aclocalPath'
 source rvcmds.sh
+# Use installed v143 toolset (CI often has 14.41+); upstream pins 14.40 which may be missing
+export RV_TOOLCHAIN="-T v143"
 rvbootstrap
 "@
 
