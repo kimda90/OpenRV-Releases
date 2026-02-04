@@ -22,6 +22,7 @@ RUN apt-get update \
     libavahi-compat-libdnssd-dev \
     libbz2-dev \
     libffi-dev \
+    libfreetype6-dev \
     liblzma-dev \
     libgl1-mesa-dev \
     libglu1-mesa-dev \
@@ -55,6 +56,9 @@ RUN apt-get update \
     zip \
     zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Ensure Freetype is present (OpenRV src/pub/freetype); separate layer so cache doesn't skip it
+RUN apt-get update && apt-get install -y --no-install-recommends libfreetype6-dev && rm -rf /var/lib/apt/lists/*
 
 # CMake (Ubuntu 22.04 cmake may be too old)
 ENV CMAKE_VERSION=3.31.6
