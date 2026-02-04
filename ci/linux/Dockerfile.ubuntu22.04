@@ -8,7 +8,12 @@ ENV QT_VERSION=6.5.3
 ENV PYTHON_VERSION=3.11.8
 ENV QT_QPA_PLATFORM=offscreen
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Enable universe and install build deps in a single layer so apt indexes are fresh
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends software-properties-common \
+    && add-apt-repository -y universe \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
     build-essential \
     ca-certificates \
     curl \
