@@ -1,5 +1,7 @@
-# Build OpenRV on Windows: clone to short path, then build via bash (rvcmds.sh + rvbootstrap).
-# Requires: VS 2022, Python 3.11, CMake, Qt 6.5.3 (msvc2019_64), Strawberry Perl, Rust, MSYS2 MinGW64 + pacman deps.
+# Build OpenRV on Windows per official docs: https://aswf-openrv.readthedocs.io/en/latest/build_system/config_windows.html
+# Requires: VS 2022 (MSVC v143 14.40), Python 3.11 (as python3.exe), CMake 3.27+, Qt 6.5.3 (msvc2019_64),
+#   Strawberry Perl, Rust 1.92+, MSYS2 with MinGW64 and pacman deps. Clone to drive root (e.g. C:\OpenRV).
+# Caller must set PATH order: CMake, Python, Rust, mingw64\bin, ... , Strawberry last; QT_HOME; WIN_PERL; MSYSTEM=MINGW64.
 # Usage: .\build_windows.ps1 -Tag 'v3.2.1' [-RepoUrl '...'] [-WorkDir 'C:\OpenRV']
 param(
     [Parameter(Mandatory = $true)]
@@ -53,13 +55,18 @@ $qtHomeBash = '/' + $env:QT_HOME.Substring(0, 1).ToLower() + '/' + $env:QT_HOME.
 $env:RV_VFX_PLATFORM = 'CY2024'
 $env:RV_BUILD_TYPE = 'Release'
 
+# ACLOCAL_PATH required by OpenRV Windows build (config_windows.html)
+$aclocalPath = '/c/msys64/usr/share/aclocal'
+$winPerlBash = if ($env:WIN_PERL) { $env:WIN_PERL -replace '\\', '/' } else { 'C:/Strawberry/perl/bin' }
 $buildScript = @"
 set -e
+shopt -s expand_aliases
 cd '$workDirBash'
 export RV_VFX_PLATFORM=CY2024
 export RV_BUILD_TYPE=Release
 export QT_HOME='$qtHomeBash'
-export WIN_PERL='$($env:WIN_PERL -replace '\\', '/')'
+export WIN_PERL='$winPerlBash'
+export ACLOCAL_PATH='$aclocalPath'
 source rvcmds.sh
 rvbootstrap
 "@

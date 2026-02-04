@@ -18,9 +18,9 @@ RUN apt-get update \
     ca-certificates \
     curl \
     git \
-    libalsa-dev \
+    libasound2-dev \
     libavahi-compat-libdnssd-dev \
-    libbzip2-dev \
+    libbz2-dev \
     libffi-dev \
     libgl1-mesa-dev \
     libglu1-mesa-dev \
