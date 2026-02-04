@@ -76,13 +76,14 @@ RUN curl -sL "https://github.com/ninja-build/ninja/releases/download/v${NINJA_VE
     && unzip ninja.zip -d /usr/local/bin \
     && rm ninja.zip
 
-# Python 3.11 via uv + Qt 6.5.3 via aqtinstall; symlink python3 so OpenRV build finds it
+# Python 3.11 via uv + Qt 6.5.3 via aqtinstall; use a venv for aqt (PEP 668 / externally-managed)
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && export PATH="/root/.local/bin:$PATH" \
     && uv python install ${PYTHON_VERSION} \
     && ln -sf "$(uv python find ${PYTHON_VERSION})" /usr/local/bin/python3 \
-    && uv run --python ${PYTHON_VERSION} -m pip install aqtinstall \
-    && uv run --python ${PYTHON_VERSION} -m aqt install-qt linux desktop ${QT_VERSION} gcc_64 -O /opt/qt \
+    && uv venv /opt/venv-aqt --python ${PYTHON_VERSION} \
+    && uv pip install aqtinstall --python /opt/venv-aqt/bin/python \
+    && /opt/venv-aqt/bin/aqt install-qt linux desktop ${QT_VERSION} gcc_64 -O /opt/qt \
     --archives qtbase qtdeclarative qtsvg qttools qttranslations qtwayland icu
 ENV PATH="/root/.local/bin:${PATH}"
 

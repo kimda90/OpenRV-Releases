@@ -40,6 +40,10 @@ try {
     Pop-Location
 }
 
+# Patch rvcmds.sh to use -T v143 only (CI has 14.41+; upstream pins 14.40 which may be missing)
+$rvcmds = Join-Path $WorkDir 'rvcmds.sh'
+(Get-Content $rvcmds -Raw) -replace 'v143,version=14\.40', 'v143' | Set-Content $rvcmds -NoNewline
+
 # Convert Windows path to MSYS2 path (C:\OpenRV -> /c/OpenRV)
 $workDirBash = '/' + $WorkDir.Substring(0, 1).ToLower() + '/' + $WorkDir.Substring(2).Replace('\', '/')
 
@@ -68,8 +72,6 @@ export QT_HOME='$qtHomeBash'
 export WIN_PERL='$winPerlBash'
 export ACLOCAL_PATH='$aclocalPath'
 source rvcmds.sh
-# Use installed v143 toolset (CI often has 14.41+); upstream pins 14.40 which may be missing
-export RV_TOOLCHAIN="-T v143"
 rvbootstrap
 "@
 
