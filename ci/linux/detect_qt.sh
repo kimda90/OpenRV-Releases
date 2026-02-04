@@ -30,7 +30,7 @@ for candidate in /tmp/qttemp /opt/qt /usr/local; do
     # Conan may put Qt in a subdir; look for libQt6Core or Qt6Config.cmake
     qt_core=$(find "$candidate" -maxdepth 4 -name 'Qt6Config.cmake' 2>/dev/null | head -1)
     if [[ -n "$qt_core" ]]; then
-      # Qt6Config.cmake is in <prefix>/lib/cmake/Qt6/ -> prefix is 3 dirnames up
+      # Qt6Config.cmake is in <prefix>/lib/cmake/Qt6/ -> prefix is 4 dirnames up
       QT_HOME=$(dirname "$(dirname "$(dirname "$(dirname "$qt_core")")")")
       if [[ "$QT_HOME" == *"${QT_WANT_VERSION}"* || -f "${QT_HOME}/lib/libQt6Core.so" || -f "${QT_HOME}/lib/cmake/Qt6/Qt6Config.cmake" ]]; then
         export QT_HOME

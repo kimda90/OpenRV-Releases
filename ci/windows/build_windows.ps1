@@ -39,7 +39,7 @@ try {
 }
 
 # Convert Windows path to MSYS2 path (C:\OpenRV -> /c/OpenRV)
-$workDirBash = '/' + $WorkDir.Substring(0, 1).ToLower() + $WorkDir.Substring(2).Replace('\', '/')
+$workDirBash = '/' + $WorkDir.Substring(0, 1).ToLower() + '/' + $WorkDir.Substring(2).Replace('\', '/')
 
 # QT_HOME should be set by caller (e.g. C:\Qt\6.5.3\msvc2019_64)
 if (-not $env:QT_HOME) {
@@ -47,7 +47,7 @@ if (-not $env:QT_HOME) {
     if (Test-Path $qtCandidate) { $env:QT_HOME = $qtCandidate }
 }
 if (-not $env:QT_HOME) { throw 'QT_HOME not set and C:\Qt\6.5.3\msvc2019_64 not found. Install Qt 6.5.3 (e.g. aqt install-qt).' }
-$qtHomeBash = '/' + $env:QT_HOME.Substring(0, 1).ToLower() + $env:QT_HOME.Substring(2).Replace('\', '/')
+$qtHomeBash = '/' + $env:QT_HOME.Substring(0, 1).ToLower() + '/' + $env:QT_HOME.Substring(2).Replace('\', '/')
 
 # Build in bash: set env and run rvbootstrap
 $env:RV_VFX_PLATFORM = 'CY2024'
@@ -59,6 +59,7 @@ cd '$workDirBash'
 export RV_VFX_PLATFORM=CY2024
 export RV_BUILD_TYPE=Release
 export QT_HOME='$qtHomeBash'
+export WIN_PERL='$($env:WIN_PERL -replace '\\', '/')'
 source rvcmds.sh
 rvbootstrap
 "@

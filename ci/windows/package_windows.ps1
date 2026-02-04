@@ -15,6 +15,10 @@ $stageDir = Join-Path $OpenRVRoot '_build\stage'
 if (-not (Test-Path $stageDir)) {
     throw "Stage directory not found: $stageDir"
 }
+$rvExe = Join-Path $stageDir 'app\bin\rv.exe'
+if (-not (Test-Path $rvExe)) {
+    throw "Stage incomplete: $rvExe not found. Run the build first."
+}
 
 $archiveName = "OpenRV-$Tag-windows-x86_64.zip"
 New-Item -ItemType Directory -Path $OutDir -Force | Out-Null

@@ -111,9 +111,10 @@ jobs:
 
       - name: Build OpenRV (Windows)
         run: |
-          $env:Path = "C:\msys64\usr\bin;$env:Path"
+          $env:Path = "C:\Strawberry\perl\bin;C:\msys64\usr\bin;$env:Path"
           $env:QT_HOME = "C:\Qt\6.5.3\msvc2019_64"
           $env:BASH_EXE = "C:\msys64\usr\bin\bash.exe"
+          $env:WIN_PERL = "C:/Strawberry/perl/bin"
           .\ci\windows\build_windows.ps1 -Tag '${{ env.OPENRV_TAG }}' -WorkDir "C:\OpenRV"
         shell: pwsh
 
@@ -146,6 +147,9 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: OpenRV ${{ github.ref_name }}
           draft: false
-          files: release-artifacts/**/*
+          files: |
+            release-artifacts/linux-rocky9/*
+            release-artifacts/windows/*
+            release-artifacts/linux-ubuntu/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
