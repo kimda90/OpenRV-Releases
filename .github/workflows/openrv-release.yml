@@ -93,8 +93,8 @@ jobs:
       - name: Install Qt 6.5.3
         run: |
           pip install aqtinstall
-          # OpenRV requires Qt6WebEngineCore (depends on Qt6WebChannel) and WebSockets, Multimedia
-          aqt install-qt windows desktop 6.5.3 win64_msvc2019_64 -O C:\Qt -m qtwebchannel qtwebengine qtwebsockets qtmultimedia
+          # OpenRV requires Qt6WebEngineCore (depends on Qt6WebChannel, Qt6Positioning) and WebSockets, Multimedia
+          aqt install-qt windows desktop 6.5.3 win64_msvc2019_64 -O C:\Qt -m qtwebchannel qtwebengine qtwebsockets qtmultimedia qtpositioning
         env:
           QT_HOME: C:\Qt\6.5.3\msvc2019_64
 
