@@ -30,7 +30,8 @@ source "${CI_SCRIPT_DIR}/detect_qt.sh"
 export RV_VFX_PLATFORM="${RV_VFX_PLATFORM:-CY2024}"
 export RV_BUILD_TYPE="${RV_BUILD_TYPE:-Release}"
 
-# Build using upstream scripts
+# Build using upstream scripts (expand_aliases so rvbootstrap alias works in non-interactive script)
+shopt -s expand_aliases 2>/dev/null || true
 source rvcmds.sh
 rvbootstrap
 
