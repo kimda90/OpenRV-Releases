@@ -1,0 +1,18 @@
+# OpenRV build image for Rocky Linux 9 (VFX CY2024).
+# Uses ASWF ci-openrv:2024; Qt is provided via Conan (e.g. /tmp/qttemp).
+# Build from repo root: docker build -f ci/linux/Dockerfile.rocky9 .
+FROM aswf/ci-openrv:2024
+
+USER root
+# Ensure git is available for cloning upstream
+RUN dnf install -y git && dnf clean all && rm -rf /var/cache/dnf
+
+# Copy build scripts (context is repo root)
+COPY ci/linux/detect_qt.sh ci/linux/build_in_container.sh /ci/
+RUN chmod +x /ci/detect_qt.sh /ci/build_in_container.sh
+
+# Output directory for artifacts (mount in CI)
+RUN mkdir -p /out
+WORKDIR /work
+
+ENTRYPOINT ["/ci/build_in_container.sh"]

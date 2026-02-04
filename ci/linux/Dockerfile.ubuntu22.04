@@ -1,0 +1,87 @@
+# OpenRV build image for Ubuntu 22.04 (experimental, best-effort).
+# VFX CY2024: Qt 6.5.3, Python 3.11. Reuses build_in_container.sh with DISTRO_SUFFIX=linux-ubuntu22.04.
+# Build from repo root: docker build -f ci/linux/Dockerfile.ubuntu22.04 .
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV QT_VERSION=6.5.3
+ENV PYTHON_VERSION=3.11.8
+ENV QT_QPA_PLATFORM=offscreen
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    curl \
+    git \
+    libalsa-dev \
+    libavahi-compat-libdnssd-dev \
+    libbzip2-dev \
+    libffi-dev \
+    libgl1-mesa-dev \
+    libglu1-mesa-dev \
+    libncurses-dev \
+    libnss3-dev \
+    libreadline-dev \
+    libsqlite3-dev \
+    libx11-dev \
+    libxcomposite-dev \
+    libxcursor-dev \
+    libxdamage-dev \
+    libxext-dev \
+    libxi-dev \
+    libxkbcommon-dev \
+    libxrandr-dev \
+    libxrender-dev \
+    libxtst-dev \
+    libxxf86vm-dev \
+    meson \
+    nasm \
+    ninja-build \
+    ocl-icd-opencl-dev \
+    patch \
+    patchelf \
+    pkg-config \
+    python3-dev \
+    python3-pip \
+    python3-venv \
+    unzip \
+    wget \
+    xz-utils \
+    yasm \
+    zip \
+    zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# CMake (Ubuntu 22.04 cmake may be too old)
+ENV CMAKE_VERSION=3.31.6
+RUN curl -sL "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.sh" -o cmake.sh \
+    && sh cmake.sh --prefix=/usr/local --skip-license \
+    && rm cmake.sh
+ENV PATH="/usr/local/bin:${PATH}"
+
+# Python 3.11 via deadsnakes or use system 3.10 and accept; OpenRV CY2024 wants 3.11
+RUN apt-get update && apt-get install -y --no-install-recommends software-properties-common \
+    && add-apt-repository -y ppa:deadsnakes/ppa \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends python3.11 python3.11-dev python3.11-venv \
+    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python3 -m pip install --break-system-packages aqtinstall
+
+# Install Qt 6.5.3 to /opt/qt (or ~/Qt for non-root)
+RUN python3 -m aqt install-qt linux desktop ${QT_VERSION} gcc_64 -O /opt/qt \
+    --archives qtbase qtdeclarative qtsvg qttools qttranslations qtwayland icu
+
+ENV QT_HOME=/opt/qt/6.5.3/gcc_64
+ENV PATH="${QT_HOME}/bin:${PATH}"
+ENV CMAKE_PREFIX_PATH="${QT_HOME}"
+
+# Copy build scripts (context is repo root)
+COPY ci/linux/detect_qt.sh ci/linux/build_in_container.sh /ci/
+RUN chmod +x /ci/detect_qt.sh /ci/build_in_container.sh
+
+RUN mkdir -p /out
+WORKDIR /work
+
+ENTRYPOINT ["/ci/build_in_container.sh"]

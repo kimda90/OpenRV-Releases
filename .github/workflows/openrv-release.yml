@@ -1,0 +1,151 @@
+# OpenRV release build: triggered on push of tags matching v*
+# Builds from upstream AcademySoftwareFoundation/OpenRV at the tag.
+# Jobs: linux-rocky9 (required), linux-ubuntu (optional), windows (required), release
+name: OpenRV Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  OPENRV_TAG: ${{ github.ref_name }}
+  OPENRV_REPO: https://github.com/AcademySoftwareFoundation/OpenRV.git
+
+jobs:
+  linux-rocky9:
+    name: Linux (Rocky 9)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build OpenRV (Rocky 9)
+        run: |
+          mkdir -p out
+          docker build -f ci/linux/Dockerfile.rocky9 -t openrv-build-rocky9 .
+          docker run --rm \
+            -e OPENRV_TAG="${{ env.OPENRV_TAG }}" \
+            -e OPENRV_REPO="${{ env.OPENRV_REPO }}" \
+            -e DISTRO_SUFFIX=linux-rocky9 \
+            -v "${{ github.workspace }}/out:/out" \
+            openrv-build-rocky9
+
+      - name: Upload Rocky9 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-rocky9
+          path: out/OpenRV-${{ env.OPENRV_TAG }}-linux-rocky9-x86_64.tar.gz
+
+  linux-ubuntu:
+    name: Linux (Ubuntu 22.04, experimental)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build OpenRV (Ubuntu 22.04)
+        run: |
+          mkdir -p out
+          docker build -f ci/linux/Dockerfile.ubuntu22.04 -t openrv-build-ubuntu .
+          docker run --rm \
+            -e OPENRV_TAG="${{ env.OPENRV_TAG }}" \
+            -e OPENRV_REPO="${{ env.OPENRV_REPO }}" \
+            -e DISTRO_SUFFIX=linux-ubuntu22.04 \
+            -v "${{ github.workspace }}/out:/out" \
+            openrv-build-ubuntu
+
+      - name: Upload Ubuntu artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-ubuntu
+          path: out/OpenRV-${{ env.OPENRV_TAG }}-linux-ubuntu22.04-x86_64.tar.gz
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Ensure python3.exe
+        run: |
+          $py = (Get-Command python -ErrorAction SilentlyContinue).Source
+          if ($py) {
+            $dir = Split-Path $py
+            $py3 = Join-Path $dir 'python3.exe'
+            if (-not (Test-Path $py3)) { Copy-Item $py $py3 }
+          }
+
+      - name: Install Qt 6.5.3
+        run: |
+          pip install aqtinstall
+          aqt install-qt windows desktop 6.5.3 win64_msvc2019_64 -O C:\Qt
+        env:
+          QT_HOME: C:\Qt\6.5.3\msvc2019_64
+
+      - name: Install Strawberry Perl
+        run: choco install strawberryperl -y
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Install MSYS2 and build tools
+        run: |
+          choco install msys2 -y
+          $env:Path = "C:\msys64\usr\bin;$env:Path"
+          bash -lc "pacman -Sy --noconfirm --needed mingw-w64-x86_64-toolchain autoconf automake bison flex git libtool nasm patch unzip zip"
+
+      - name: Build OpenRV (Windows)
+        run: |
+          $env:Path = "C:\msys64\usr\bin;$env:Path"
+          $env:QT_HOME = "C:\Qt\6.5.3\msvc2019_64"
+          $env:BASH_EXE = "C:\msys64\usr\bin\bash.exe"
+          .\ci\windows\build_windows.ps1 -Tag '${{ env.OPENRV_TAG }}' -WorkDir "C:\OpenRV"
+        shell: pwsh
+
+      - name: Package OpenRV (Windows)
+        run: |
+          .\ci\windows\package_windows.ps1 -OpenRVRoot "C:\OpenRV" -Tag '${{ env.OPENRV_TAG }}' -OutDir dist
+        shell: pwsh
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/OpenRV-${{ env.OPENRV_TAG }}-windows-x86_64.zip
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [linux-rocky9, windows]
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: OpenRV ${{ github.ref_name }}
+          draft: false
+          files: release-artifacts/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
