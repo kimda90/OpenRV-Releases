@@ -33,6 +33,11 @@ This repo contains **only** build and CI configuration and scripts for building 
 - **Local Windows**: Install prerequisites (VS 2022, Python 3.11, CMake, Qt 6.5.3, Perl, Rust, MSYS2); run `build_windows.ps1` then `package_windows.ps1` from a suitable environment.
 - **CI**: Push a tag matching `v*` (e.g. `v3.2.1`) to trigger the workflow; artifacts are published to the GitHub Release for that tag.
 
+## Caching
+
+- **Linux**: Docker layer cache via Buildx (`cache-from`/`cache-to` type=gha). No manual cache keys.
+- **Windows**: `actions/cache` for Qt, Strawberry Perl, Rust, MSYS2, and pip. Cache keys are in `.github/workflows/openrv-release.yml` (e.g. `openrv-msys2-v1`). When changing the MSYS2 pacman package list or Qt version, bump the corresponding cache key so the next run repopulates the cache.
+
 ## Support policy
 
 - **Rocky 9** artifact: supported.

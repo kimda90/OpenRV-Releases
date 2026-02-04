@@ -24,9 +24,19 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build OpenRV (Rocky 9)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ci/linux/Dockerfile.rocky9
+          load: true
+          tags: openrv-build-rocky9
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          push: false
+
+      - name: Run OpenRV build (Rocky 9)
         run: |
           mkdir -p out
-          docker build -f ci/linux/Dockerfile.rocky9 -t openrv-build-rocky9 .
           docker run --rm \
             -e OPENRV_TAG="${{ env.OPENRV_TAG }}" \
             -e OPENRV_REPO="${{ env.OPENRV_REPO }}" \
@@ -52,9 +62,19 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build OpenRV (Ubuntu 22.04)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ci/linux/Dockerfile.ubuntu22.04
+          load: true
+          tags: openrv-build-ubuntu
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          push: false
+
+      - name: Run OpenRV build (Ubuntu 22.04)
         run: |
           mkdir -p out
-          docker build -f ci/linux/Dockerfile.ubuntu22.04 -t openrv-build-ubuntu .
           docker run --rm \
             -e OPENRV_TAG="${{ env.OPENRV_TAG }}" \
             -e OPENRV_REPO="${{ env.OPENRV_REPO }}" \
@@ -80,6 +100,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
 
       - name: Ensure python3.exe
         run: |
@@ -90,28 +111,60 @@ jobs:
             if (-not (Test-Path $py3)) { Copy-Item $py $py3 }
           }
 
+      - name: Cache Qt
+        id: cache-qt
+        uses: actions/cache@v4
+        with:
+          path: C:\Qt
+          key: openrv-qt-6.5.3-msvc2019
+
       - name: Install Qt 6.5.3
+        if: steps.cache-qt.outputs.cache-hit != 'true'
         run: |
           pip install aqtinstall
-          # OpenRV requires Qt6WebEngineCore (depends on Qt6WebChannel, Qt6Positioning) and WebSockets, Multimedia
           aqt install-qt windows desktop 6.5.3 win64_msvc2019_64 -O C:\Qt -m qtwebchannel qtwebengine qtwebsockets qtmultimedia qtpositioning
         env:
           QT_HOME: C:\Qt\6.5.3\msvc2019_64
 
+      - name: Cache Strawberry Perl
+        id: cache-perl
+        uses: actions/cache@v4
+        with:
+          path: C:\Strawberry
+          key: openrv-strawberryperl
+
       - name: Install Strawberry Perl
+        if: steps.cache-perl.outputs.cache-hit != 'true'
         run: choco install strawberryperl -y
 
+      - name: Cache Rust
+        id: cache-rust
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.USERPROFILE }}\.cargo
+            ${{ env.USERPROFILE }}\.rustup
+          key: openrv-rust
+
       - name: Install Rust
+        if: steps.cache-rust.outputs.cache-hit != 'true'
         run: |
           Invoke-WebRequest -Uri https://win.rustup.rs/x86_64 -OutFile rustup-init.exe -UseBasicParsing
           .\rustup-init.exe -y
         shell: pwsh
 
+      - name: Cache MSYS2
+        id: cache-msys2
+        uses: actions/cache@v4
+        with:
+          path: C:\msys64
+          key: openrv-msys2-v1
+
       - name: Install MSYS2 and build tools
+        if: steps.cache-msys2.outputs.cache-hit != 'true'
         run: |
           choco install msys2 -y
           $env:Path = "C:\msys64\usr\bin;$env:Path"
-          # OpenRV Windows docs: use MSYS2 MinGW64; install exact pacman list from config_windows.html
           bash -lc "pacman -Sy --noconfirm --needed mingw-w64-x86_64-autotools mingw-w64-x86_64-glew mingw-w64-x86_64-libarchive mingw-w64-x86_64-make mingw-w64-x86_64-meson mingw-w64-x86_64-toolchain autoconf automake bison flex git libtool nasm p7zip patch unzip zip"
 
       - name: Setup MSVC (nmake for OpenSSL build)

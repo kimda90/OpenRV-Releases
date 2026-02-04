@@ -68,10 +68,32 @@ docker run --rm -e OPENRV_TAG=v3.2.1 -e DISTRO_SUFFIX=linux-ubuntu22.04 -v "$(pw
 | **Windows**    | Supported      |
 | **Ubuntu 22.04** | Experimental; job uses `continue-on-error` and does not block releases |
 
-## Caching
+## Caching and build time
 
-- **Linux**: Rocky 9 uses the `aswf/ci-openrv:2024` image (Qt and deps included). Ubuntu installs Qt in the image; no extra cache is required.
-- **Windows**: Optional caching of Qt (e.g. aqtinstall output) or MSYS2 can be added later if build time becomes an issue.
+To keep build times down, the workflow uses caches on all platforms:
+
+- **Linux (Rocky 9 and Ubuntu)**  
+  Docker layer cache is stored in GitHub Actions cache (`type=gha`). The first run builds the full image (base, CMake, Ninja, Python, Qt, etc.); later runs reuse layers so the image build is much faster. Only the final layers (e.g. `COPY ci/`) and the actual OpenRV compile run every time.
+
+- **Windows**  
+  These are cached and install steps are skipped on cache hit:
+  - **Qt 6.5.3** (`C:\Qt`) — key `openrv-qt-6.5.3-msvc2019`
+  - **Strawberry Perl** (`C:\Strawberry`) — key `openrv-strawberryperl`
+  - **Rust** (`%USERPROFILE%\.cargo`, `%USERPROFILE%\.rustup`) — key `openrv-rust`
+  - **MSYS2** (`C:\msys64`) — key `openrv-msys2-v1` (bump the key in the workflow if you change the pacman package list)
+  - **pip** — cached by `actions/setup-python` with `cache: 'pip'`
+
+  The first run installs everything and populates the cache; subsequent runs restore and only run the OpenRV build.
+
+### Optional: Pre-built Docker images (Linux)
+
+For even faster Linux builds, you can build a **deps-only** image once, push it to a registry (e.g. GitHub Container Registry), and use it as the build image so CI only runs the OpenRV build inside the container (no `docker build` of the full stack each time). To do that:
+
+1. Add a Dockerfile that builds only the environment (no `COPY ci/` or entrypoint), or use a multi-stage build whose final stage is `FROM your-deps-image`.
+2. Build and push that image on a schedule or when `ci/linux/` changes (e.g. in a separate workflow).
+3. In the release workflow, pull that image and run the same `docker run ... /ci/build_in_container.sh` with the appropriate env and volume.
+
+The current workflow does not depend on a pre-built image; it uses layer caching only.
 
 ## License
 
