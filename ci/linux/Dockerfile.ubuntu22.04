@@ -62,16 +62,17 @@ RUN curl -sL "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSIO
     && rm cmake.sh
 ENV PATH="/usr/local/bin:${PATH}"
 
-# Python 3.11 via uv + Qt 6.5.3 via aqtinstall; use a venv for aqt (PEP 668 / externally-managed)
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
-    && export PATH="/root/.local/bin:$PATH" \
-    && uv python install ${PYTHON_VERSION} \
-    && ln -sf "$(uv python find ${PYTHON_VERSION})" /usr/local/bin/python3 \
-    && uv venv /opt/venv-aqt --python ${PYTHON_VERSION} \
-    && uv pip install aqtinstall --python /opt/venv-aqt/bin/python \
-    && /opt/venv-aqt/bin/aqt install-qt linux desktop ${QT_VERSION} gcc_64 -O /opt/qt \
-    --archives qtbase qtdeclarative qtsvg qttools qttranslations qtwayland icu
-ENV PATH="/root/.local/bin:${PATH}"
+# Python 3.11 via pyenv + Qt 6.5.3 via aqtinstall; all in one RUN so path exists, explicit python for ensurepip/pip
+RUN git clone https://github.com/pyenv/pyenv.git /opt/pyenv \
+    && /opt/pyenv/bin/pyenv install ${PYTHON_VERSION} \
+    && /opt/pyenv/bin/pyenv global ${PYTHON_VERSION} \
+    && /opt/pyenv/versions/${PYTHON_VERSION}/bin/python3 -m ensurepip --upgrade \
+    && /opt/pyenv/versions/${PYTHON_VERSION}/bin/python3 -m pip install aqtinstall \
+    && /opt/pyenv/versions/${PYTHON_VERSION}/bin/python3 -m aqt install-qt linux desktop ${QT_VERSION} gcc_64 -O /opt/qt \
+    --archives qtbase qtdeclarative qtsvg qttools qttranslations qtwayland icu \
+    && ln -sf /opt/pyenv/versions/${PYTHON_VERSION}/bin/python3 /usr/local/bin/python3
+# Explicit pyenv version path first (shims can fail in non-interactive container)
+ENV PATH="/opt/pyenv/versions/${PYTHON_VERSION}/bin:/opt/pyenv/shims:/opt/pyenv/bin:${PATH}"
 
 ENV QT_HOME=/opt/qt/6.5.3/gcc_64
 ENV PATH="${QT_HOME}/bin:${PATH}"
