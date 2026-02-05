@@ -56,16 +56,9 @@ jobs:
           cache-to: type=gha,mode=max,scope=rocky9
           push: false
 
+      # Use host Docker (not Buildx) so FROM openrv-rocky9-base resolves from the image loaded in the previous step
       - name: Build extended Docker image (vanilla + GL/devel packages)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ci/linux/Dockerfile.rocky9-cy2024
-          load: true
-          tags: openrv-build-rocky9
-          cache-from: type=gha,scope=rocky9-ext
-          cache-to: type=gha,mode=max,scope=rocky9-ext
-          push: false
+        run: docker build -f ci/linux/Dockerfile.rocky9-cy2024 -t openrv-build-rocky9 .
 
       - name: Run OpenRV build (Rocky 9)
         env:
