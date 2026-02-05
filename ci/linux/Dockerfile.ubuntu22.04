@@ -27,6 +27,7 @@ RUN apt-get update \
     # Build essentials (gcc, g++, make, etc.)
     build-essential \
     ca-certificates \
+    curl \
     # RV requirements (translated from Rocky 9)
     libasound2-dev \
     autoconf \
