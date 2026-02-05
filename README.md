@@ -60,58 +60,41 @@ docker run --rm -e OPENRV_TAG=v3.2.1 -e DISTRO_SUFFIX=linux-ubuntu22.04 -v "$(pw
    ```
 5. Output: `dist\OpenRV-<TAG>-windows-x86_64.zip`.
 
-## Optional: Blackmagic Decklink (all platforms)
+## Optional: Blackmagic Decklink and NDI (all platforms)
 
-CI and the steps above build **without** the Blackmagic Decklink output plugin. You will see this CMake warning (expected, non-fatal):
+### Enabling in CI
 
-```text
-Blackmagic Decklink SDK path not specified, disabling Blackmagic output plugin.
-```
+To build **with** Blackmagic DeckLink and/or NDI SDK support in CI, add these repository secrets (Settings → Secrets and variables → Actions):
 
-To enable the Blackmagic output capability when building locally (Linux, Windows, or macOS):
+| Secret | Description |
+|--------|-------------|
+| **BMD_DECKLINK_SDK_ZIP_URL** | Direct URL to download the Blackmagic DeckLink SDK zip (e.g. from your own hosting after downloading from [Blackmagic Desktop Video SDK](https://www.blackmagicdesign.com/desktopvideo_sdk)). |
+| **NDI_SDK_URL** | Direct URL to download the NDI SDK zip or tarball for the platform (Linux: use the NDI SDK for Linux archive; Windows: use the Windows SDK zip from [ndi.video](https://ndi.video/)). |
 
-1. Download the [Blackmagic Desktop Video SDK](https://www.blackmagicdesign.com/desktopvideo_sdk) and note the path to the zip (e.g. `Blackmagic_DeckLink_SDK_14.1.zip`).
-2. Pass the path to CMake when configuring (e.g. on the `rvcfg` line or when running `cmake -B _build ...`):
-   - **Linux/macOS**:  
-     `-DRV_DEPS_BMD_DECKLINK_SDK_ZIP_PATH='<path>/Blackmagic_DeckLink_SDK_14.1.zip'`
-   - **Windows**:  
-     `-DRV_DEPS_BMD_DECKLINK_SDK_ZIP_PATH='C:/path/Blackmagic_DeckLink_SDK_14.1.zip'`
+When set, the workflow downloads the SDKs and passes them to the OpenRV build. If either secret is unset, that plugin is skipped (same as today) and you may see the expected CMake messages about the plugin being disabled.
 
-Example (after `source rvcmds.sh`):
+### Building locally without CI
 
-```bash
-rvcfg -DRV_DEPS_BMD_DECKLINK_SDK_ZIP_PATH='/path/to/Blackmagic_DeckLink_SDK_14.1.zip'
-```
+If you build locally **without** these SDKs, you will see these CMake messages (expected, non-fatal):
 
-CI does not download or bundle the SDK (proprietary); the plugin is optional for releases.
+- `Blackmagic Decklink SDK path not specified, disabling Blackmagic output plugin.`
+- `NDI SDK not found, disabling NDI output plugin.`
 
-## Optional: NDI (all platforms)
+**Blackmagic DeckLink (local):**
 
-CI and the steps above build **without** the NDI output plugin. You will see this CMake warning (expected, non-fatal):
+1. Download the [Blackmagic Desktop Video SDK](https://www.blackmagicdesign.com/desktopvideo_sdk) and note the path to the zip.
+2. Pass it when configuring:  
+   `-DRV_DEPS_BMD_DECKLINK_SDK_ZIP_PATH='<path>/Blackmagic_DeckLink_SDK_14.1.zip'`  
+   Example (after `source rvcmds.sh`):  
+   `rvcfg -DRV_DEPS_BMD_DECKLINK_SDK_ZIP_PATH='/path/to/Blackmagic_DeckLink_SDK_14.1.zip'`
 
-```text
-NDI SDK not found, disabling NDI output plugin.
-```
-
-To enable NDI output capability when building locally (Linux, Windows, or macOS):
+**NDI (local):**
 
 1. Download the [NDI SDK](https://ndi.video/) and install or extract it.
-2. Set the **NDI_SDK_ROOT** environment variable to the root of the NDI SDK installation before configuring (e.g. before running `rvcfg` or `cmake -B _build ...`).
-   - **Linux/macOS**:  
-     `export NDI_SDK_ROOT=/path/to/NDI_SDK`
-   - **Windows (PowerShell)**:  
-     `$env:NDI_SDK_ROOT = "C:\path\to\NDI SDK"`
-   - **Windows (cmd)**:  
-     `set NDI_SDK_ROOT=C:\path\to\NDI SDK`
-
-Example (after `source rvcmds.sh`):
-
-```bash
-export NDI_SDK_ROOT=/opt/ndi-sdk
-rvcfg
-```
-
-CI does not install or bundle the NDI SDK; the plugin is optional for releases.
+2. Set **NDI_SDK_ROOT** to the root of the NDI SDK before running `rvcfg` or `cmake`, e.g.  
+   `export NDI_SDK_ROOT=/path/to/NDI_SDK` (Linux/macOS) or  
+   `$env:NDI_SDK_ROOT = "C:\path\to\NDI SDK"` (Windows PowerShell).
+3. Run `rvcfg` (or pass `-DNDI_SDK_ROOT=...` to CMake).
 
 ## Support policy
 

@@ -20,29 +20,42 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Clone OpenRV
+        run: |
+          git clone --depth 1 --branch "${{ env.OPENRV_TAG }}" "${{ env.OPENRV_REPO }}" openrv-src
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build OpenRV (Rocky 9)
+      - name: Build Docker image (upstream Rocky 9 Dockerfile)
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: ci/linux/Dockerfile.rocky9
+          context: openrv-src
+          file: openrv-src/dockerfiles/Dockerfile.Linux-Rocky9-CY2024
           load: true
           tags: openrv-build-rocky9
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=rocky9
+          cache-to: type=gha,mode=max,scope=rocky9
           push: false
 
       - name: Run OpenRV build (Rocky 9)
+        env:
+          BMD_DECKLINK_SDK_ZIP_URL: ${{ secrets.BMD_DECKLINK_SDK_ZIP_URL }}
+          NDI_SDK_URL: ${{ secrets.NDI_SDK_URL }}
         run: |
           mkdir -p out
+          BMD_E=""; NDI_E=""
+          [ -n "$BMD_DECKLINK_SDK_ZIP_URL" ] && BMD_E="-e BMD_DECKLINK_SDK_ZIP_URL=$BMD_DECKLINK_SDK_ZIP_URL"
+          [ -n "$NDI_SDK_URL" ] && NDI_E="-e NDI_SDK_URL=$NDI_SDK_URL"
           docker run --rm \
             -e OPENRV_TAG="${{ env.OPENRV_TAG }}" \
             -e OPENRV_REPO="${{ env.OPENRV_REPO }}" \
             -e DISTRO_SUFFIX=linux-rocky9 \
+            $BMD_E $NDI_E \
+            -v "${{ github.workspace }}/ci/linux:/ci:ro" \
             -v "${{ github.workspace }}/out:/out" \
-            openrv-build-rocky9
+            openrv-build-rocky9 \
+            /ci/build_in_container.sh
 
       - name: Upload Rocky9 artifact
         uses: actions/upload-artifact@v4
@@ -61,24 +74,31 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build OpenRV (Ubuntu 22.04)
+      - name: Build Docker image (Ubuntu 22.04)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ci/linux/Dockerfile.ubuntu22.04
           load: true
           tags: openrv-build-ubuntu
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=ubuntu
+          cache-to: type=gha,mode=max,scope=ubuntu
           push: false
 
       - name: Run OpenRV build (Ubuntu 22.04)
+        env:
+          BMD_DECKLINK_SDK_ZIP_URL: ${{ secrets.BMD_DECKLINK_SDK_ZIP_URL }}
+          NDI_SDK_URL: ${{ secrets.NDI_SDK_URL }}
         run: |
           mkdir -p out
+          BMD_E=""; NDI_E=""
+          [ -n "$BMD_DECKLINK_SDK_ZIP_URL" ] && BMD_E="-e BMD_DECKLINK_SDK_ZIP_URL=$BMD_DECKLINK_SDK_ZIP_URL"
+          [ -n "$NDI_SDK_URL" ] && NDI_E="-e NDI_SDK_URL=$NDI_SDK_URL"
           docker run --rm \
             -e OPENRV_TAG="${{ env.OPENRV_TAG }}" \
             -e OPENRV_REPO="${{ env.OPENRV_REPO }}" \
             -e DISTRO_SUFFIX=linux-ubuntu22.04 \
+            $BMD_E $NDI_E \
             -v "${{ github.workspace }}/out:/out" \
             openrv-build-ubuntu
 
@@ -178,16 +198,41 @@ jobs:
         with:
           vs-version: '[17.0, 18.0)'
 
+      - name: Download optional SDKs
+        id: sdks
+        env:
+          BMD_DECKLINK_SDK_ZIP_URL: ${{ secrets.BMD_DECKLINK_SDK_ZIP_URL }}
+          NDI_SDK_URL: ${{ secrets.NDI_SDK_URL }}
+        run: |
+          $bmdPath = ''
+          $ndiRoot = ''
+          if ($env:BMD_DECKLINK_SDK_ZIP_URL) {
+            Write-Host "Downloading Blackmagic DeckLink SDK..."
+            $bmdPath = "$env:RUNNER_TEMP\BMD_DeckLink_SDK.zip"
+            Invoke-WebRequest -Uri $env:BMD_DECKLINK_SDK_ZIP_URL -OutFile $bmdPath -UseBasicParsing
+          }
+          if ($env:NDI_SDK_URL) {
+            Write-Host "Downloading NDI SDK..."
+            $ndiZip = "$env:RUNNER_TEMP\NDI_SDK.zip"
+            Invoke-WebRequest -Uri $env:NDI_SDK_URL -OutFile $ndiZip -UseBasicParsing
+            $ndiRoot = "$env:RUNNER_TEMP\ndi-sdk"
+            New-Item -ItemType Directory -Path $ndiRoot -Force | Out-Null
+            Expand-Archive -Path $ndiZip -DestinationPath $ndiRoot -Force
+            $children = Get-ChildItem $ndiRoot -Directory
+            if ($children.Count -eq 1) { $ndiRoot = $children[0].FullName }
+          }
+          # Export for subsequent steps
+          "BMD_PATH=$bmdPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "NDI_ROOT=$ndiRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+        shell: pwsh
+
       - name: Build OpenRV (Windows)
         run: |
-          # Run build inside VS developer environment so CMake finds C/C++ compiler (Visual Studio 17 2022 generator).
-          $vcvars = Get-ChildItem -Path "C:\Program Files (x86)\Microsoft Visual Studio\2022" -Recurse -Filter "vcvars64.bat" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
-          if (-not $vcvars) { $vcvars = Get-ChildItem -Path "C:\Program Files\Microsoft Visual Studio\2022" -Recurse -Filter "vcvars64.bat" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName }
-          if (-not $vcvars) { throw "vcvars64.bat not found" }
-          $pathPre = "C:\Program Files\CMake\bin;" + (Split-Path (Get-Command python).Source) + ";$env:USERPROFILE\.cargo\bin;C:\msys64\mingw64\bin;C:\msys64\usr\bin"
-          $pathSuf = "C:\Strawberry\perl\bin"
-          $tag = "${{ env.OPENRV_TAG }}"
-          cmd /c "call `"$vcvars`" && set `"PATH=$pathPre;%PATH%;$pathSuf`" && set QT_HOME=C:\Qt\6.5.3\msvc2019_64 && set BASH_EXE=C:\msys64\usr\bin\bash.exe && set WIN_PERL=C:/Strawberry/perl/bin && set MSYSTEM=MINGW64 && set CL=/FS && set DISTUTILS_USE_SDK=1 && powershell -NoProfile -File ci\windows\build_windows.ps1 -Tag $tag -WorkDir C:\OpenRV"
+          .\ci\windows\build_windows.ps1 `
+            -Tag "${{ env.OPENRV_TAG }}" `
+            -WorkDir "C:\OpenRV" `
+            -BMDDeckLinkSdkZipPath "${{ env.BMD_PATH }}" `
+            -NDISdkRoot "${{ env.NDI_ROOT }}"
         shell: pwsh
 
       - name: Package OpenRV (Windows)

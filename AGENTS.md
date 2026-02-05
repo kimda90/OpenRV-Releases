@@ -8,40 +8,67 @@ This repo contains **only** build and CI configuration and scripts for building 
 
 ## Key paths
 
-- **`ci/linux/`** – Linux builds: `Dockerfile.rocky9`, `Dockerfile.ubuntu22.04`, `build_in_container.sh`, `detect_qt.sh`, `KNOWN_ISSUES.md`
+- **`ci/linux/`** – Linux builds: `Dockerfile.ubuntu22.04`, `build_in_container.sh`, `detect_qt.sh`, `KNOWN_ISSUES.md`
 - **`ci/windows/`** – Windows builds: `build_windows.ps1`, `package_windows.ps1`
 - **`.github/workflows/openrv-release.yml`** – Tag-triggered release workflow
+
+## Build architecture
+
+### Linux (Rocky 9)
+- **Uses upstream Dockerfile**: The CI workflow clones OpenRV and uses `dockerfiles/Dockerfile.Linux-Rocky9-CY2024` from upstream. This ensures we always have the correct dependencies.
+- **Build script**: Our `ci/linux/build_in_container.sh` is mounted into the container and handles cloning, patching, building, and packaging.
+
+### Linux (Ubuntu 22.04, experimental)
+- **Custom Dockerfile**: `ci/linux/Dockerfile.ubuntu22.04` is a translation of the upstream Rocky 9 Dockerfile with equivalent Ubuntu packages.
+- **Package mapping**: See the Dockerfile for Rocky 9 → Ubuntu package mappings. Critical packages for GLEW/OpenGL include `libgl-dev`, `libglvnd-dev`, `libdrm-dev`.
+
+### Windows
+- **Pure PowerShell**: `build_windows.ps1` uses a pure PowerShell approach to avoid interpreter nesting issues (no bash/cmd/PowerShell chains).
+- **VS environment**: The script imports the VS 2022 x64 environment directly into PowerShell rather than using nested `cmd /c` calls.
+- **No alias reliance**: CMake configure and build are called directly, not via `rvcmds.sh` aliases, for reliable exit code handling.
 
 ## Conventions
 
 - **Shell scripts**: Bash-compatible; safe to `source` where noted (e.g. `detect_qt.sh`).
-- **Windows scripts**: PowerShell (`build_windows.ps1`, `package_windows.ps1`).
+- **Windows scripts**: PowerShell (`build_windows.ps1`, `package_windows.ps1`). Avoid nested interpreters.
 - **VFX platform**: CY2024. **Qt**: 6.5.3 (gcc_64 on Linux, msvc2019_64 on Windows).
 - **Artifact names**: `OpenRV-${TAG}-<platform>-x86_64.<zip|tar.gz>`  
   Examples: `OpenRV-v3.2.1-windows-x86_64.zip`, `OpenRV-v3.2.1-linux-rocky9-x86_64.tar.gz`, `OpenRV-v3.2.1-linux-ubuntu22.04-x86_64.tar.gz`.
-- **Build output**: OpenRV’s staged binary tree is `_build/stage/`; the `rv` executable is at `_build/stage/app/bin/rv` (Linux/Windows).
+- **Build output**: OpenRV's staged binary tree is `_build/stage/`; the `rv` executable is at `_build/stage/app/bin/rv` (Linux) or `_build/stage/app/bin/rv.exe` (Windows).
 
 ## Upstream build flow
 
 - Clone `https://github.com/AcademySoftwareFoundation/OpenRV.git`, checkout tag, `git submodule update --init --recursive`.
 - **Linux/macOS**: `source rvcmds.sh` then `rvbootstrap` (first time) or `rvmk` (incremental). Set `RV_VFX_PLATFORM=CY2024` and `QT_HOME` (or `CMAKE_PREFIX_PATH`) before sourcing.
-- **Windows**: Use a bash environment (e.g. MSYS2 MinGW64 or Git Bash) with PATH set for VS, Python, CMake, Qt, Perl, Rust, MSYS2; same `source rvcmds.sh` and `rvbootstrap`. Clone to a short path (e.g. `C:\OpenRV`) to avoid MAX_PATH issues.
+- **Windows (our approach)**: We bypass `rvcmds.sh` aliases and call cmake directly for reliability. See `build_windows.ps1`.
 
 ## Testing
 
-- **Local Linux (Rocky 9)**: Build image from `ci/linux/Dockerfile.rocky9`, run container with `build_in_container.sh`, mount `/out` to collect artifacts.
-- **Local Windows**: Install prerequisites (VS 2022, Python 3.11, CMake, Qt 6.5.3, Perl, Rust, MSYS2); run `build_windows.ps1` then `package_windows.ps1` from a suitable environment.
+- **Local Linux (Rocky 9)**: Clone OpenRV, build image from upstream `dockerfiles/Dockerfile.Linux-Rocky9-CY2024`, run container with `build_in_container.sh` mounted, mount `/out` to collect artifacts.
+- **Local Windows**: Install prerequisites (VS 2022, Python 3.11, CMake, Qt 6.5.3, Perl, Rust, MSYS2); run `build_windows.ps1` then `package_windows.ps1`.
 - **CI**: Push a tag matching `v*` (e.g. `v3.2.1`) to trigger the workflow; artifacts are published to the GitHub Release for that tag.
 
 ## Caching
 
-- **Linux**: Docker layer cache via Buildx (`cache-from`/`cache-to` type=gha). No manual cache keys.
+- **Linux**: Docker layer cache via Buildx (`cache-from`/`cache-to` type=gha, with `scope` per distro).
 - **Windows**: `actions/cache` for Qt, Strawberry Perl, Rust, MSYS2, and pip. Cache keys are in `.github/workflows/openrv-release.yml` (e.g. `openrv-msys2-v1`). When changing the MSYS2 pacman package list or Qt version, bump the corresponding cache key so the next run repopulates the cache.
 
-## Optional dependencies (all platforms)
+## Optional dependencies (BMD DeckLink, NDI)
 
-- **Blackmagic Decklink**: CMake warns "Blackmagic Decklink SDK path not specified, disabling Blackmagic output plugin." This is expected in CI. To enable the plugin when building locally, pass `-DRV_DEPS_BMD_DECKLINK_SDK_ZIP_PATH='<path>/Blackmagic_DeckLink_SDK_14.1.zip'` (download from [Blackmagic Desktop Video SDK](https://www.blackmagicdesign.com/desktopvideo_sdk)). Documented in README.
-- **NDI**: CMake warns "NDI SDK not found, disabling NDI output plugin." This is expected in CI. To enable the plugin when building locally, set `NDI_SDK_ROOT` to the root of the [NDI SDK](https://ndi.video/) installation before running rvcfg/cmake. Documented in README.
+- **CI**: To build **with** Blackmagic and/or NDI, set repository secrets **BMD_DECKLINK_SDK_ZIP_URL** and/or **NDI_SDK_URL** (direct download URLs). The workflow downloads the SDKs and passes them into the build. If unset, those plugins are skipped and the usual CMake messages appear (non-fatal).
+- **rvcmds.sh patch**: On Linux, `build_in_container.sh` patches `rvcmds.sh` to append `${RV_CFG_EXTRA}` to the cmake invocation.
+- **Windows**: `build_windows.ps1` passes BMD/NDI paths directly to cmake via command-line arguments.
+- **Local builds**: See README for passing BMD zip path and NDI_SDK_ROOT when building outside CI.
+
+## Error handling
+
+- **Linux**: `build_in_container.sh` searches for errors in ExternalProject logs (e.g., `*GLEW*build*.log`) and outputs them on failure.
+- **Windows**: `build_windows.ps1` scans `_build` for `*.log` files containing error patterns on failure.
+
+## Known issues
+
+- **GLEW build failures**: Usually caused by missing OpenGL development packages. Ensure `libgl-dev`, `libglvnd-dev`, `libdrm-dev` (Ubuntu) or equivalent packages are installed.
+- **Windows exit code 0 but no rv.exe**: Previously caused by alias expansion issues in nested bash. Now resolved by using direct cmake calls.
 
 ## Support policy
 

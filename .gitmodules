@@ -1,0 +1,3 @@
+[submodule "openrv"]
+	path = openrv
+	url = git@github.com:AcademySoftwareFoundation/OpenRV.git
