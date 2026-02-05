@@ -121,19 +121,19 @@ GXX_REAL=$(command -v g++ 2>/dev/null || echo "g++")
 for cmd in gcc g++; do
     if [ "$cmd" = "gcc" ]; then real=$GCC_REAL; else real=$GXX_REAL; fi
     cat > "${WRAP_DIR}/${cmd}" << WRAPEOF
-#!/bin/sh
-args=""
+#!/bin/bash
+args=()
 version_only=0
 for a in "\$@"; do
     case "\$a" in
         -V|-qversion|-version) version_only=1 ;;
-        *) args="\${args} \${a}" ;;
+        *) args+=("\$a") ;;
     esac
 done
-if [ "\$version_only" = 1 ] && [ -z "\$(echo "\$args" | tr -d ' ')" ]; then
+if [ "\$version_only" = 1 ] && [ \${#args[@]} -eq 0 ]; then
     exec $real --version
 else
-    exec $real \$args
+    exec $real "\${args[@]}"
 fi
 WRAPEOF
     chmod +x "${WRAP_DIR}/${cmd}"
