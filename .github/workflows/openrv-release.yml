@@ -16,6 +16,7 @@ jobs:
   linux-rocky9:
     name: Linux (Rocky 9)
     runs-on: ubuntu-latest
+    continue-on-error: false
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -83,7 +84,8 @@ jobs:
   linux-ubuntu:
     name: Linux (Ubuntu 22.04, experimental)
     runs-on: ubuntu-latest
-    continue-on-error: true
+    continue-on-error: false
+    if: false  # DISABLED
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -129,6 +131,8 @@ jobs:
   windows:
     name: Windows
     runs-on: windows-latest
+    continue-on-error: false
+    if: false  # DISABLED
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -316,7 +320,7 @@ jobs:
   release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: [linux-rocky9, windows]
+    needs: [linux-rocky9, linux-ubuntu, windows]
     permissions:
       contents: write
     steps:
