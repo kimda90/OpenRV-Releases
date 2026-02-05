@@ -15,8 +15,9 @@ This repo contains **only** build and CI configuration and scripts for building 
 ## Build architecture
 
 ### Linux (Rocky 9)
-- **Uses upstream Dockerfile**: The CI workflow clones OpenRV and uses `dockerfiles/Dockerfile.Linux-Rocky9-CY2024` from upstream. This ensures we always have the correct dependencies.
+- **Upstream Dockerfile only**: We use `dockerfiles/Dockerfile.Linux-Rocky9-CY2024` from upstream **as-is**; we do not maintain a custom Rocky 9 Dockerfile.
 - **Build script**: Our `ci/linux/build_in_container.sh` is mounted into the container and handles cloning, patching, building, and packaging.
+- **Caching**: (1) The OpenRV clone is cached by **tag + commit SHA** (`openrv-rocky9-<tag>-<sha>`), so if you overwrite a tag (force-push the same tag to a new commit), the cache key changes and we clone fresh; re-runs for the same commit still hit the cache. (2) Docker layer cache (Buildx type=gha, scope=rocky9) reuses image layers when the upstream Dockerfile is unchanged.
 
 ### Linux (Ubuntu 22.04, experimental)
 - **Custom Dockerfile**: `ci/linux/Dockerfile.ubuntu22.04` is a translation of the upstream Rocky 9 Dockerfile with equivalent Ubuntu packages.

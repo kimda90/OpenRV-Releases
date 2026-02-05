@@ -20,7 +20,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Resolve tag to commit SHA so cache key changes when the tag is overwritten
+      - name: Get OpenRV tag commit SHA
+        id: openrv-sha
+        run: |
+          SHA=$(git ls-remote "${{ env.OPENRV_REPO }}" "refs/tags/${{ env.OPENRV_TAG }}^{}" 2>/dev/null | cut -f1)
+          [ -z "$SHA" ] && SHA=$(git ls-remote "${{ env.OPENRV_REPO }}" "refs/tags/${{ env.OPENRV_TAG }}" 2>/dev/null | cut -f1)
+          echo "sha=${SHA}" >> $GITHUB_OUTPUT
+          echo "Resolved ${{ env.OPENRV_TAG }} to ${SHA}"
+
+      - name: Restore OpenRV clone (Dockerfile context)
+        id: openrv-cache
+        uses: actions/cache@v4
+        with:
+          path: openrv-src
+          key: openrv-rocky9-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}
+
       - name: Clone OpenRV
+        if: steps.openrv-cache.outputs.cache-hit != 'true'
         run: |
           git clone --depth 1 --branch "${{ env.OPENRV_TAG }}" "${{ env.OPENRV_REPO }}" openrv-src
 
@@ -226,13 +243,42 @@ jobs:
           "NDI_ROOT=$ndiRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
         shell: pwsh
 
-      - name: Build OpenRV (Windows)
+      - name: Build OpenRV (Windows) - Clone
         run: |
-          .\ci\windows\build_windows.ps1 `
-            -Tag "${{ env.OPENRV_TAG }}" `
-            -WorkDir "C:\OpenRV" `
-            -BMDDeckLinkSdkZipPath "${{ env.BMD_PATH }}" `
-            -NDISdkRoot "${{ env.NDI_ROOT }}"
+          .\ci\windows\build_windows.ps1 -Phase Clone `
+            -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV" `
+            -BMDDeckLinkSdkZipPath "${{ env.BMD_PATH }}" -NDISdkRoot "${{ env.NDI_ROOT }}"
+        shell: pwsh
+
+      - name: Build OpenRV (Windows) - Python venv
+        run: |
+          .\ci\windows\build_windows.ps1 -Phase Venv `
+            -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
+        shell: pwsh
+
+      - name: Build OpenRV (Windows) - Configure
+        run: |
+          .\ci\windows\build_windows.ps1 -Phase Configure `
+            -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV" `
+            -BMDDeckLinkSdkZipPath "${{ env.BMD_PATH }}" -NDISdkRoot "${{ env.NDI_ROOT }}"
+        shell: pwsh
+
+      - name: Build OpenRV (Windows) - Dependencies
+        run: |
+          .\ci\windows\build_windows.ps1 -Phase BuildDependencies `
+            -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
+        shell: pwsh
+
+      - name: Build OpenRV (Windows) - Main executable
+        run: |
+          .\ci\windows\build_windows.ps1 -Phase BuildMain `
+            -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
+        shell: pwsh
+
+      - name: Build OpenRV (Windows) - Verify
+        run: |
+          .\ci\windows\build_windows.ps1 -Phase Verify `
+            -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
         shell: pwsh
 
       - name: Package OpenRV (Windows)
