@@ -133,6 +133,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Resolve OpenRV tag to commit SHA for cache key (cache invalidates when tag is overwritten)
+      - name: Get OpenRV tag commit SHA
+        id: openrv-sha
+        run: |
+          SHA=$(git ls-remote "${{ env.OPENRV_REPO }}" "refs/tags/${{ env.OPENRV_TAG }}^{}" 2>/dev/null | cut -f1)
+          [ -z "$SHA" ] && SHA=$(git ls-remote "${{ env.OPENRV_REPO }}" "refs/tags/${{ env.OPENRV_TAG }}" 2>/dev/null | cut -f1)
+          echo "sha=${SHA}" >> $GITHUB_OUTPUT
+          echo "OpenRV tag ${{ env.OPENRV_TAG }} -> ${SHA}"
+        shell: bash
+
       - name: Clone OpenRV (for pip cache key)
         run: |
           git clone --depth 1 --branch "${{ env.OPENRV_TAG }}" "${{ env.OPENRV_REPO }}" openrv-src
@@ -215,6 +225,9 @@ jobs:
         with:
           vs-version: '[17.0, 18.0)'
 
+      - name: Setup MSVC developer environment (cl, link, INCLUDE, LIB for Meson/deps)
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Download optional SDKs
         id: sdks
         env:
@@ -263,7 +276,15 @@ jobs:
             -BMDDeckLinkSdkZipPath "${{ env.BMD_PATH }}" -NDISdkRoot "${{ env.NDI_ROOT }}"
         shell: pwsh
 
+      - name: Restore OpenRV dependencies build cache
+        id: deps-cache
+        uses: actions/cache@v4
+        with:
+          path: C:\OpenRV\_build
+          key: openrv-windows-deps-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}
+
       - name: Build OpenRV (Windows) - Dependencies
+        if: steps.deps-cache.outputs.cache-hit != 'true'
         run: |
           .\ci\windows\build_windows.ps1 -Phase BuildDependencies `
             -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"

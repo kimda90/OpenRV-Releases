@@ -127,6 +127,10 @@ set > "$tempEnv"
     $env:SETUPTOOLS_USE_DISTUTILS = "stdlib"
     $env:RV_VFX_PLATFORM = "CY2024"
 
+    # Force Meson and other subprocesses to use MSVC (avoid "icl" / Intel compiler detection)
+    $env:CC = "cl"
+    $env:CXX = "cl"
+
     return @{ QtHome = $qtHome; PythonDir = $pythonDir }
 }
 
@@ -185,6 +189,22 @@ function Invoke-PhaseVenv {
 function Invoke-PhaseConfigure {
     Write-Host "[Phase: Configure] CMake configure" -ForegroundColor Cyan
     if (-not (Test-Path $WorkDir)) { throw "WorkDir $WorkDir not found. Run Clone and Venv first." }
+
+    # Apply Windows build patches to cloned OpenRV (we do not modify upstream; patch only the clone at build time)
+    $patchDir = Join-Path $PSScriptRoot "patches"
+    $dav1dPatch = Join-Path $patchDir "dav1d_windows_meson.patch"
+    if (Test-Path $dav1dPatch) {
+        Write-Host "Applying DAV1D Windows Meson patch..." -ForegroundColor Yellow
+        Push-Location $WorkDir
+        try {
+            & git apply --ignore-whitespace $dav1dPatch 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "Warning: DAV1D patch could not be applied (maybe already applied or OpenRV version changed). Continuing." -ForegroundColor Yellow
+            }
+        } finally {
+            Pop-Location
+        }
+    }
 
     $cmakeExtraArgs = @()
     if ($BMDDeckLinkSdkZipPath -and (Test-Path $BMDDeckLinkSdkZipPath)) {

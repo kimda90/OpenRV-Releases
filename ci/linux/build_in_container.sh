@@ -101,8 +101,46 @@ fi
 export RV_VFX_PLATFORM="${RV_VFX_PLATFORM:-CY2024}"
 export RV_BUILD_TYPE="${RV_BUILD_TYPE:-Release}"
 
+# Autoconf/libtool in deps (e.g. RV_DEPS_RAW/LibRaw) may invoke CC/CXX with Intel-only flags
+# (-V, -qversion, -version), which GCC rejects. Use wrappers that strip those and use --version.
+WRAP_DIR="${WORKDIR}/.ci_cc_wrap"
+mkdir -p "$WRAP_DIR"
+# Resolve real compiler paths before we prepend WRAP_DIR to PATH
+GCC_REAL=$(command -v gcc 2>/dev/null || echo "gcc")
+GXX_REAL=$(command -v g++ 2>/dev/null || echo "g++")
+for cmd in gcc g++; do
+    if [ "$cmd" = "gcc" ]; then real=$GCC_REAL; else real=$GXX_REAL; fi
+    cat > "${WRAP_DIR}/${cmd}" << WRAPEOF
+#!/bin/sh
+args=""
+version_only=0
+for a in "\$@"; do
+    case "\$a" in
+        -V|-qversion|-version) version_only=1 ;;
+        *) args="\${args} \${a}" ;;
+    esac
+done
+if [ "\$version_only" = 1 ] && [ -z "\$(echo "\$args" | tr -d ' ')" ]; then
+    exec $real --version
+else
+    exec $real \$args
+fi
+WRAPEOF
+    chmod +x "${WRAP_DIR}/${cmd}"
+done
+export PATH="${WRAP_DIR}:${PATH}"
+export CC="${WRAP_DIR}/gcc"
+export CXX="${WRAP_DIR}/g++"
+# Also sanitize CFLAGS/CXXFLAGS in case they contain Intel flags
+for var in CFLAGS CXXFLAGS LDFLAGS; do
+    eval "val=\${$var:-}"
+    val=$(echo " $val " | sed 's/ -V / /g; s/ -qversion / /g; s/ -version / /g; s/^ //; s/ $//')
+    eval "export $var=\"$val\""
+done
+
 echo "QT_HOME=$QT_HOME"
 echo "RV_VFX_PLATFORM=$RV_VFX_PLATFORM"
+echo "CC=$CC CXX=$CXX"
 echo "RV_CFG_EXTRA=$RV_CFG_EXTRA"
 
 # Build using upstream scripts
