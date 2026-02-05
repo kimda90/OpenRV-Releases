@@ -60,6 +60,59 @@ docker run --rm -e OPENRV_TAG=v3.2.1 -e DISTRO_SUFFIX=linux-ubuntu22.04 -v "$(pw
    ```
 5. Output: `dist\OpenRV-<TAG>-windows-x86_64.zip`.
 
+## Optional: Blackmagic Decklink (all platforms)
+
+CI and the steps above build **without** the Blackmagic Decklink output plugin. You will see this CMake warning (expected, non-fatal):
+
+```text
+Blackmagic Decklink SDK path not specified, disabling Blackmagic output plugin.
+```
+
+To enable the Blackmagic output capability when building locally (Linux, Windows, or macOS):
+
+1. Download the [Blackmagic Desktop Video SDK](https://www.blackmagicdesign.com/desktopvideo_sdk) and note the path to the zip (e.g. `Blackmagic_DeckLink_SDK_14.1.zip`).
+2. Pass the path to CMake when configuring (e.g. on the `rvcfg` line or when running `cmake -B _build ...`):
+   - **Linux/macOS**:  
+     `-DRV_DEPS_BMD_DECKLINK_SDK_ZIP_PATH='<path>/Blackmagic_DeckLink_SDK_14.1.zip'`
+   - **Windows**:  
+     `-DRV_DEPS_BMD_DECKLINK_SDK_ZIP_PATH='C:/path/Blackmagic_DeckLink_SDK_14.1.zip'`
+
+Example (after `source rvcmds.sh`):
+
+```bash
+rvcfg -DRV_DEPS_BMD_DECKLINK_SDK_ZIP_PATH='/path/to/Blackmagic_DeckLink_SDK_14.1.zip'
+```
+
+CI does not download or bundle the SDK (proprietary); the plugin is optional for releases.
+
+## Optional: NDI (all platforms)
+
+CI and the steps above build **without** the NDI output plugin. You will see this CMake warning (expected, non-fatal):
+
+```text
+NDI SDK not found, disabling NDI output plugin.
+```
+
+To enable NDI output capability when building locally (Linux, Windows, or macOS):
+
+1. Download the [NDI SDK](https://ndi.video/) and install or extract it.
+2. Set the **NDI_SDK_ROOT** environment variable to the root of the NDI SDK installation before configuring (e.g. before running `rvcfg` or `cmake -B _build ...`).
+   - **Linux/macOS**:  
+     `export NDI_SDK_ROOT=/path/to/NDI_SDK`
+   - **Windows (PowerShell)**:  
+     `$env:NDI_SDK_ROOT = "C:\path\to\NDI SDK"`
+   - **Windows (cmd)**:  
+     `set NDI_SDK_ROOT=C:\path\to\NDI SDK`
+
+Example (after `source rvcmds.sh`):
+
+```bash
+export NDI_SDK_ROOT=/opt/ndi-sdk
+rvcfg
+```
+
+CI does not install or bundle the NDI SDK; the plugin is optional for releases.
+
 ## Support policy
 
 | Platform        | Support        |

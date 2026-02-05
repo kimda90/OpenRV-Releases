@@ -38,6 +38,11 @@ This repo contains **only** build and CI configuration and scripts for building 
 - **Linux**: Docker layer cache via Buildx (`cache-from`/`cache-to` type=gha). No manual cache keys.
 - **Windows**: `actions/cache` for Qt, Strawberry Perl, Rust, MSYS2, and pip. Cache keys are in `.github/workflows/openrv-release.yml` (e.g. `openrv-msys2-v1`). When changing the MSYS2 pacman package list or Qt version, bump the corresponding cache key so the next run repopulates the cache.
 
+## Optional dependencies (all platforms)
+
+- **Blackmagic Decklink**: CMake warns "Blackmagic Decklink SDK path not specified, disabling Blackmagic output plugin." This is expected in CI. To enable the plugin when building locally, pass `-DRV_DEPS_BMD_DECKLINK_SDK_ZIP_PATH='<path>/Blackmagic_DeckLink_SDK_14.1.zip'` (download from [Blackmagic Desktop Video SDK](https://www.blackmagicdesign.com/desktopvideo_sdk)). Documented in README.
+- **NDI**: CMake warns "NDI SDK not found, disabling NDI output plugin." This is expected in CI. To enable the plugin when building locally, set `NDI_SDK_ROOT` to the root of the [NDI SDK](https://ndi.video/) installation before running rvcfg/cmake. Documented in README.
+
 ## Support policy
 
 - **Rocky 9** artifact: supported.
