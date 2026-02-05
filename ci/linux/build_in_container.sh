@@ -57,6 +57,16 @@ if [[ -f "${CI_SCRIPT_DIR}/patches/dav1d_use_git.patch" ]]; then
     fi
 fi
 
+# Patch GLEW cmake to fix duplicate variable definitions in src/glew.c (lines 2059-2068)
+if [[ -f "${CI_SCRIPT_DIR}/patches/glew_fix_duplicates.patch" ]]; then
+    echo "[2c/6] Patching glew.cmake to remove duplicate definitions..."
+    if patch -p1 --forward -r - < "${CI_SCRIPT_DIR}/patches/glew_fix_duplicates.patch" 2>/dev/null; then
+        echo "glew.cmake patched successfully"
+    else
+        echo "GLEW patch not applied (may already be applied or upstream changed); continuing"
+    fi
+fi
+
 # Optional BMD and NDI: download when URLs provided and set CMake args
 echo "[3/6] Processing optional SDKs..."
 RV_CFG_EXTRA="${RV_CFG_EXTRA:-}"

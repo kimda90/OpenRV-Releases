@@ -1,0 +1,12 @@
+--- a/cmake/dependencies/glew.cmake
++++ b/cmake/dependencies/glew.cmake
+@@ -51,6 +51,8 @@ EXTERNALPROJECT_ADD(
+   URL ${_download_url}
+   URL_MD5 ${_download_hash}
+   DOWNLOAD_NAME ${_target}_${_version}.zip
+   DOWNLOAD_DIR ${RV_DEPS_DOWNLOAD_DIR}
++  # Fix duplicate variable definitions in GLEW src/glew.c (lines 2059-2068 are duplicates of 2055-2058)
++  PATCH_COMMAND sed -i "2059,2068d" <SOURCE_DIR>/src/glew.c
+   CONFIGURE_COMMAND cd auto && ${_make_command} && cd .. && ${_make_command}
+   BUILD_COMMAND ${_make_command} -j${_cpu_count} GLEW_DEST=${_install_dir}
+   INSTALL_COMMAND ${_make_command} install LIBDIR=${_lib_dir} GLEW_DEST=${_install_dir}
