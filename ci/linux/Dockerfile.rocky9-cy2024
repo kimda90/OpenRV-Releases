@@ -1,0 +1,16 @@
+# Extended Rocky 9 CY2024 image: vanilla upstream image + missing build deps.
+# Build order: 1) upstream Dockerfile.Linux-Rocky9-CY2024 -> openrv-rocky9-base
+#              2) this file (FROM openrv-rocky9-base) -> openrv-build-rocky9
+# Adds: GL/libglvnd (fix GLEW PFNGL* redefinitions), pkg-config, other -devel for configure checks.
+FROM openrv-rocky9-base
+
+USER root
+
+RUN dnf install -y \
+    mesa-libGL-devel \
+    libglvnd-devel \
+    libdrm-devel \
+    pkg-config \
+    && dnf clean all
+
+USER rv

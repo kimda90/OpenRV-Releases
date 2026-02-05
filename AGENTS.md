@@ -8,16 +8,17 @@ This repo contains **only** build and CI configuration and scripts for building 
 
 ## Key paths
 
-- **`ci/linux/`** – Linux builds: `Dockerfile.ubuntu22.04`, `build_in_container.sh`, `detect_qt.sh`, `KNOWN_ISSUES.md`
+- **`ci/linux/`** – Linux builds: `Dockerfile.ubuntu22.04`, `Dockerfile.rocky9-cy2024` (extended image), `build_in_container.sh`, `detect_qt.sh`, `patches/dav1d_use_git.patch`, `KNOWN_ISSUES.md`
 - **`ci/windows/`** – Windows builds: `build_windows.ps1`, `package_windows.ps1`
 - **`.github/workflows/openrv-release.yml`** – Tag-triggered release workflow
 
 ## Build architecture
 
 ### Linux (Rocky 9)
-- **Upstream Dockerfile only**: We use `dockerfiles/Dockerfile.Linux-Rocky9-CY2024` from upstream **as-is**; we do not maintain a custom Rocky 9 Dockerfile.
+- **Two-step image build**: (1) Build the **vanilla** image from upstream `dockerfiles/Dockerfile.Linux-Rocky9-CY2024` (tag: `openrv-rocky9-base`). (2) Build the **extended** image from `ci/linux/Dockerfile.rocky9-cy2024`, which `FROM openrv-rocky9-base` and installs missing deps (mesa-libGL-devel, libglvnd-devel, libdrm-devel, pkg-config) to fix GLEW PFNGL* redefinitions and configure checks. The run step uses the extended image (`openrv-build-rocky9`). Upstream Dockerfile is never edited.
 - **Build script**: Our `ci/linux/build_in_container.sh` is mounted into the container and handles cloning, patching, building, and packaging.
-- **Caching**: (1) The OpenRV clone is cached by **tag + commit SHA** (`openrv-rocky9-<tag>-<sha>`), so if you overwrite a tag (force-push the same tag to a new commit), the cache key changes and we clone fresh; re-runs for the same commit still hit the cache. (2) Docker layer cache (Buildx type=gha, scope=rocky9) reuses image layers when the upstream Dockerfile is unchanged.
+- **DAV1D on Linux**: We apply a build-time patch to the cloned OpenRV's `cmake/dependencies/dav1d.cmake` so dav1d is fetched via **GIT** instead of URL zip. That gives the dependency a `.git` directory so Meson can generate `include/vcs_version.h` without "fatal: not a git repository". Patch: `ci/linux/patches/dav1d_use_git.patch`.
+- **Caching**: (1) The OpenRV clone is cached by **tag + commit SHA** (`openrv-rocky9-<tag>-<sha>`). (2) Docker layer cache: Buildx `scope=rocky9` for the vanilla image, `scope=rocky9-ext` for the extended image.
 
 ### Linux (Ubuntu 22.04, experimental)
 - **Custom Dockerfile**: `ci/linux/Dockerfile.ubuntu22.04` is a translation of the upstream Rocky 9 Dockerfile with equivalent Ubuntu packages.
@@ -47,7 +48,7 @@ This repo contains **only** build and CI configuration and scripts for building 
 
 ## Testing
 
-- **Local Linux (Rocky 9)**: Clone OpenRV, build image from upstream `dockerfiles/Dockerfile.Linux-Rocky9-CY2024`, run container with `build_in_container.sh` mounted, mount `/out` to collect artifacts.
+- **Local Linux (Rocky 9)**: Clone OpenRV, build vanilla image from upstream `dockerfiles/Dockerfile.Linux-Rocky9-CY2024` (tag e.g. `openrv-rocky9-base`), then build extended image from `ci/linux/Dockerfile.rocky9-cy2024`, run container with `build_in_container.sh` and `ci/linux` mounted at `/ci`, mount `/out` to collect artifacts.
 - **Local Windows**: Install prerequisites (VS 2022, Python 3.11, CMake, Qt 6.5.3, Perl, Rust, MSYS2); run `build_windows.ps1` then `package_windows.ps1`.
 - **CI**: Push a tag matching `v*` (e.g. `v3.2.1`) to trigger the workflow; artifacts are published to the GitHub Release for that tag.
 

@@ -47,6 +47,16 @@ if ! grep -q 'RV_CFG_EXTRA' rvcmds.sh; then
     sed -i 's/-DRV_VFX_PLATFORM=\${RV_VFX_PLATFORM}\x27/-DRV_VFX_PLATFORM=\${RV_VFX_PLATFORM} \${RV_CFG_EXTRA}\x27/' rvcmds.sh 2>/dev/null || true
 fi
 
+# Patch dav1d to use GIT instead of URL zip so Meson has .git for vcs_version.h (fix "fatal: not a git repository")
+if [[ -f "${CI_SCRIPT_DIR}/patches/dav1d_use_git.patch" ]]; then
+    echo "[2b/6] Patching dav1d.cmake to use GIT (fix vcs_version.h when building from release zip)..."
+    if patch -p1 --forward -r - < "${CI_SCRIPT_DIR}/patches/dav1d_use_git.patch" 2>/dev/null; then
+        echo "dav1d.cmake patched successfully"
+    else
+        echo "dav1d patch not applied (may already be applied or upstream changed); continuing"
+    fi
+fi
+
 # Optional BMD and NDI: download when URLs provided and set CMake args
 echo "[3/6] Processing optional SDKs..."
 RV_CFG_EXTRA="${RV_CFG_EXTRA:-}"
