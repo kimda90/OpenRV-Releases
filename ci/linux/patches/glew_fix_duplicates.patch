@@ -8,8 +8,8 @@
 -  CONFIGURE_COMMAND cd auto && ${_make_command} && cd .. && ${_make_command}
 +  # Fix duplicate variable definitions in GLEW src/glew.c (lines 2059-2068 are duplicates of 2055-2058)
 +  PATCH_COMMAND bash -c "find <SOURCE_DIR> -name glew.c -type f -path '*/src/glew.c' -print0 | xargs -0 -r sed -i '2059,2068d'"
-+  # Skip auto-generation from OpenGL registry (fragile, needs network+Perl) — use pre-generated sources from the archive
-+  CONFIGURE_COMMAND ${_make_command}
-   BUILD_COMMAND ${_make_command} -j${_cpu_count} GLEW_DEST=${_install_dir}
-   INSTALL_COMMAND ${_make_command} install LIBDIR=${_lib_dir} GLEW_DEST=${_install_dir}
++  # Skip auto-generation; use pre-generated sources. Archive extracts to glew-<version>/ so run make from there.
++  CONFIGURE_COMMAND bash -c "cd <SOURCE_DIR>/glew-${_version} && ${_make_command}"
++  BUILD_COMMAND bash -c "cd <SOURCE_DIR>/glew-${_version} && ${_make_command} -j${_cpu_count} GLEW_DEST=${_install_dir}"
++  INSTALL_COMMAND bash -c "cd <SOURCE_DIR>/glew-${_version} && ${_make_command} install LIBDIR=${_lib_dir} GLEW_DEST=${_install_dir}"
    BUILD_IN_SOURCE TRUE
