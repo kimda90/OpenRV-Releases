@@ -187,9 +187,30 @@ rvsetup || {
     exit 1
 }
 
-# Run rvmk (cmake configure + build)
-echo "Running rvmk (configure + build)..."
-rvmk || build_failed=1
+# Configure (so we can build dependencies next)
+echo "Running rvcfg (configure)..."
+rvcfg || {
+    echo "ERROR: rvcfg failed" >&2
+    exit 1
+}
+
+# Build dependencies first, then fix bdwgc include layout if needed (set OPENRV_FIX_GC_INCLUDE=0 to skip)
+# bdwgc may install headers flat to include/; OpenRV expects include/gc/gc.h
+if [[ "${OPENRV_FIX_GC_INCLUDE:-1}" != "0" ]]; then
+    echo "Building dependencies and fixing bdwgc include layout (OPENRV_FIX_GC_INCLUDE=${OPENRV_FIX_GC_INCLUDE:-1})..."
+    rvenv && cmake --build "${RV_BUILD}" --config Release --parallel="${RV_BUILD_PARALLELISM}" --target dependencies
+    GC_INC="${RV_BUILD}/RV_DEPS_GC/install/include"
+    if [[ -d "${RV_BUILD}/RV_DEPS_GC" ]] && [[ -f "${GC_INC}/gc.h" ]] && [[ ! -f "${GC_INC}/gc/gc.h" ]]; then
+        mkdir -p "${GC_INC}/gc"
+        cp -f "${GC_INC}/gc.h" "${GC_INC}/gc/" 2>/dev/null || true
+        cp -f "${GC_INC}/gc_allocator.h" "${GC_INC}/gc/" 2>/dev/null || true
+        echo "Fixed bdwgc include layout (include/gc/gc.h)"
+    fi
+fi
+
+# Build main executable
+echo "Running rvbuild..."
+rvbuild || build_failed=1
 
 # On failure or missing binary, dump error logs so CI shows the real error
 RV_BIN="_build/stage/app/bin/rv"
@@ -228,6 +249,19 @@ if [[ -n "${build_failed:-}" || ! -f "$RV_BIN" ]]; then
         echo "" >&2
         echo "=== GLEW build log (last 100 lines) ===" >&2
         tail -100 "$GLEW_BUILD_LOG" >&2
+    fi
+
+    # GC (bdwgc) dependency: show install dir and logs when build failed (helps diagnose gc/gc.h missing)
+    if [[ -d _build/RV_DEPS_GC ]]; then
+        echo "" >&2
+        echo "=== RV_DEPS_GC install include dir ===" >&2
+        ls -la _build/RV_DEPS_GC/install/include/ 2>/dev/null || true >&2
+        ls -la _build/RV_DEPS_GC/install/include/gc/ 2>/dev/null || true >&2
+        GC_BUILD_LOG=$(find _build -path "*RV_DEPS_GC*" -name "*.log" 2>/dev/null | head -5)
+        if [[ -n "$GC_BUILD_LOG" ]]; then
+            echo "=== GC (bdwgc) build logs (last 80 lines each) ===" >&2
+            for f in $GC_BUILD_LOG; do echo "--- $f ---"; tail -80 "$f" 2>/dev/null; done >&2
+        fi
     fi
     
     # Check CMakeError.log

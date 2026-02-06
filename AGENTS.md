@@ -19,6 +19,7 @@ This repo contains **only** build and CI configuration and scripts for building 
 - **Build script**: Our `ci/linux/build_in_container.sh` is mounted into the container and handles cloning, patching, building, and packaging.
 - **DAV1D on Linux**: We apply a build-time patch to the cloned OpenRV's `cmake/dependencies/dav1d.cmake` so dav1d is fetched via **GIT** instead of URL zip. That gives the dependency a `.git` directory so Meson can generate `include/vcs_version.h` without "fatal: not a git repository". The build script tries `dav1d_use_git.patch` (upstream main: CONFIGURE_COMMAND split across two lines) then `dav1d_use_git_oneline.patch` (older tags: CONFIGURE_COMMAND on one line).
 - **GLEW on Linux**: We upgrade GLEW to **2.3.0** at build time by editing the cloned `cmake/dependencies/glew.cmake` (version string, URL hash, and library version). GLEW 2.3.0 fixes the duplicate variable definitions (Issue #449); no GLEW patches are applied.
+- **GC (bdwgc) on Linux**: bdwgc may install headers flat (`include/gc.h`) while OpenRV expects `include/gc/gc.h`. After `rvcfg`, the script builds the `dependencies` target, then if `OPENRV_FIX_GC_INCLUDE` is not `0` (default `1`), it creates `install/include/gc/` and copies `gc.h` and `gc_allocator.h` there when needed. Set **`OPENRV_FIX_GC_INCLUDE=0`** to skip this fix (e.g. if your bdwgc already installs the nested layout).
 - **Caching**: (1) The OpenRV clone is cached by **tag + commit SHA** (`openrv-rocky9-<tag>-<sha>`). (2) Docker layer cache: Buildx `scope=rocky9` for the vanilla image, `scope=rocky9-ext` for the extended image.
 
 ### Linux (Ubuntu 22.04, experimental)
@@ -67,12 +68,13 @@ This repo contains **only** build and CI configuration and scripts for building 
 
 ## Error handling
 
-- **Linux**: `build_in_container.sh` searches for errors in ExternalProject logs (e.g., `*GLEW*build*.log`) and outputs them on failure.
+- **Linux**: `build_in_container.sh` searches for errors in ExternalProject logs (e.g., `*GLEW*build*.log`) and outputs them on failure. If the build fails, it also dumps the RV_DEPS_GC install `include/` contents and any GC build logs to help diagnose `gc/gc.h: No such file or directory`.
 - **Windows**: `build_windows.ps1` scans `_build` for `*.log` files containing error patterns on failure.
 
 ## Known issues
 
 - **GLEW build failures**: Usually caused by missing OpenGL development packages. Ensure `libgl-dev`, `libglvnd-dev`, `libdrm-dev` (Ubuntu) or equivalent packages are installed.
+- **gc/gc.h: No such file or directory**: The bdwgc (GC) dependency may install headers to `include/` instead of `include/gc/`. The script fixes this when `OPENRV_FIX_GC_INCLUDE` is not `0` (default). If the error persists, check the RV_DEPS_GC install dir and build logs printed on failure.
 - **Windows exit code 0 but no rv.exe**: Previously caused by alias expansion issues in nested bash. Now resolved by using direct cmake calls.
 
 ## Support policy
