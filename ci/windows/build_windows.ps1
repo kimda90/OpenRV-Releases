@@ -119,6 +119,13 @@ set > "$tempEnv"
     )
     $env:PATH = ($pathComponents | Where-Object { $_ }) -join ';'
 
+    # Prepend VC tools dir (cl, link, ml64) so MSBuild custom builds (e.g. Python _decimal vcdiv64.asm) find ml64.exe (exit code 9009 = command not found)
+    $clExe = (Get-Command cl -ErrorAction SilentlyContinue).Source
+    if ($clExe) {
+        $vcBin = Split-Path $clExe -Parent
+        $env:PATH = "$vcBin;$env:PATH"
+    }
+
     $env:WIN_PERL = "C:/Strawberry/perl/bin"
     $env:RV_DEPS_WIN_PERL_ROOT = "C:/Strawberry/perl/bin"
     $env:MSYSTEM = "MINGW64"
