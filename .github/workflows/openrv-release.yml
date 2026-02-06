@@ -286,6 +286,31 @@ jobs:
       - name: Setup MSVC developer environment (cl, link, INCLUDE, LIB for Meson/deps)
         uses: ilammy/msvc-dev-cmd@v1
 
+      - name: Export VS env to GITHUB_ENV (so all steps see cl, ml64 for FFmpeg/Python deps)
+        shell: pwsh
+        run: |
+          $vsPaths = @(
+            "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat",
+            "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat",
+            "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat",
+            "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat"
+          )
+          $vcvarsall = $null
+          foreach ($p in $vsPaths) { if (Test-Path $p) { $vcvarsall = $p; break } }
+          if (-not $vcvarsall) { Write-Host "vcvarsall not found, skipping PATH export"; exit 0 }
+          $bat = [System.IO.Path]::GetTempFileName() + ".bat"
+          $envFile = [System.IO.Path]::GetTempFileName()
+          "call `"$vcvarsall`" x64 && set > `"$envFile`"" | Set-Content $bat -Encoding ASCII
+          cmd /c $bat 2>&1 | Out-Null
+          $pathLine = Get-Content $envFile | Where-Object { $_ -match '^(?i:Path)=(.*)$' } | Select-Object -First 1
+          Remove-Item $bat, $envFile -ErrorAction SilentlyContinue
+          if ($pathLine -match '^(?i:Path)=(.*)$') {
+            $pathValue = $matches[1].Trim()
+            echo "PATH<<ENDOFPATH" >> $env:GITHUB_ENV
+            echo "$pathValue" >> $env:GITHUB_ENV
+            echo "ENDOFPATH" >> $env:GITHUB_ENV
+          }
+
       - name: Download optional SDKs
         id: sdks
         env:

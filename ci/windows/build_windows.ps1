@@ -95,6 +95,18 @@ set > "$tempEnv"
     }
     Remove-Item $tempBat, $tempEnv -ErrorAction SilentlyContinue
 
+    # Derive VC x64 tools dir (cl, link, ml64) from vcvarsall path so MSBuild/FFmpeg subprocesses see them even if PATH parsing failed
+    $vcDir = Split-Path (Split-Path (Split-Path $vcvarsall -Parent) -Parent) -Parent  # VC folder
+    $msvcDir = Join-Path $vcDir "Tools\MSVC"
+    $vcBinDerived = $null
+    if (Test-Path $msvcDir) {
+        $verDir = Get-ChildItem -Path $msvcDir -Directory | Sort-Object Name -Descending | Select-Object -First 1
+        if ($verDir) {
+            $vcBin = Join-Path $verDir.FullName "bin\Hostx64\x64"
+            if (Test-Path (Join-Path $vcBin "ml64.exe")) { $vcBinDerived = $vcBin }
+        }
+    }
+
     # PATH and env
     $qtHome = $env:QT_HOME
     if (-not $qtHome -or -not (Test-Path $qtHome)) { $qtHome = "C:\Qt\6.5.3\msvc2019_64" }
@@ -119,11 +131,14 @@ set > "$tempEnv"
     )
     $env:PATH = ($pathComponents | Where-Object { $_ }) -join ';'
 
-    # Prepend VC tools dir (cl, link, ml64) so MSBuild custom builds (e.g. Python _decimal vcdiv64.asm) find ml64.exe (exit code 9009 = command not found)
+    # Prepend VC tools dir (cl, link, ml64) so MSBuild custom builds (e.g. Python _decimal vcdiv64.asm) and FFmpeg configure find them
+    if ($vcBinDerived) {
+        $env:PATH = "$vcBinDerived;$env:PATH"
+    }
     $clExe = (Get-Command cl -ErrorAction SilentlyContinue).Source
     if ($clExe) {
         $vcBin = Split-Path $clExe -Parent
-        $env:PATH = "$vcBin;$env:PATH"
+        if ($vcBin -ne $vcBinDerived) { $env:PATH = "$vcBin;$env:PATH" }
     }
 
     $env:WIN_PERL = "C:/Strawberry/perl/bin"
