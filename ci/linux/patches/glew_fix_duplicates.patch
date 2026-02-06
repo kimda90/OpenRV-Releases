@@ -6,7 +6,7 @@
    DOWNLOAD_NAME ${_target}_${_version}.zip
    DOWNLOAD_DIR ${RV_DEPS_DOWNLOAD_DIR}
 +  # Fix duplicate variable definitions in GLEW src/glew.c (lines 2059-2068 are duplicates of 2055-2058)
-+  PATCH_COMMAND sed -i "2059,2068d" <SOURCE_DIR>/glew-${_version}/src/glew.c
++  PATCH_COMMAND find <SOURCE_DIR> -name glew.c -type f -path "*/src/glew.c" -exec sed -i "2059,2068d" {} \;
    CONFIGURE_COMMAND cd auto && ${_make_command} && cd .. && ${_make_command}
    BUILD_COMMAND ${_make_command} -j${_cpu_count} GLEW_DEST=${_install_dir}
    INSTALL_COMMAND ${_make_command} install LIBDIR=${_lib_dir} GLEW_DEST=${_install_dir}
