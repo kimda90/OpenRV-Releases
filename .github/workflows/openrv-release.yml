@@ -162,6 +162,35 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Free Disk Space (Windows)
+        shell: pwsh
+        run: |
+          Write-Host "=== Disk before cleanup ==="
+          Get-PSDrive -Name C | Format-List
+
+          # Android SDK (large; not needed for OpenRV)
+          if (Test-Path "C:\Android\android-sdk") {
+            Write-Host "Removing C:\Android\android-sdk ..."
+            Remove-Item -Recurse -Force "C:\Android\android-sdk" -ErrorAction SilentlyContinue
+          }
+
+          # Docker images and build cache (job does not use Docker)
+          if (Get-Command docker -ErrorAction SilentlyContinue) {
+            Write-Host "Pruning Docker..."
+            docker system prune -af 2>$null
+          }
+
+          # Temp directories (small win, low risk)
+          $tempPaths = @($env:TEMP, "C:\Users\runneradmin\AppData\Local\Temp")
+          foreach ($p in $tempPaths) {
+            if (Test-Path $p) {
+              Get-ChildItem $p -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          }
+
+          Write-Host "=== Disk after cleanup ==="
+          Get-PSDrive -Name C | Format-List
+
       # Resolve OpenRV tag to commit SHA for cache key (cache invalidates when tag is overwritten)
       - name: Get OpenRV tag commit SHA
         id: openrv-sha
