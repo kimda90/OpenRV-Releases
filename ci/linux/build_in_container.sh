@@ -29,6 +29,16 @@ fi
 mkdir -p "$WORKDIR"
 cd "$WORKDIR"
 
+# Fix ownership of mounted _build cache (may be owned by a different UID)
+if [[ -d OpenRV/_build && ! -w OpenRV/_build ]]; then
+    echo "Fixing _build ownership..."
+    if command -v sudo >/dev/null 2>&1; then
+        sudo chown -R "$(id -u):$(id -g)" OpenRV/_build 2>/dev/null || true
+    elif [[ "$(id -u)" = "0" ]]; then
+        chown -R "$(id -u):$(id -g)" OpenRV/_build 2>/dev/null || true
+    fi
+fi
+
 # Clone and checkout tag
 echo "[1/6] Cloning OpenRV..."
 if [[ ! -d OpenRV ]]; then

@@ -20,7 +20,7 @@ This repo contains **only** build and CI configuration and scripts for building 
 - **DAV1D on Linux**: We apply a build-time patch to the cloned OpenRV's `cmake/dependencies/dav1d.cmake` so dav1d is fetched via **GIT** instead of URL zip. That gives the dependency a `.git` directory so Meson can generate `include/vcs_version.h` without "fatal: not a git repository". The build script tries `dav1d_use_git.patch` (upstream main: CONFIGURE_COMMAND split across two lines) then `dav1d_use_git_oneline.patch` (older tags: CONFIGURE_COMMAND on one line).
 - **GLEW on Linux**: We upgrade GLEW to **2.3.0** at build time by editing the cloned `cmake/dependencies/glew.cmake` (version string, URL hash, and library version). GLEW 2.3.0 fixes the duplicate variable definitions (Issue #449); no GLEW patches are applied.
 - **GC (bdwgc) on Linux**: bdwgc may install headers flat (`include/gc.h`) while OpenRV expects `include/gc/gc.h`. After `rvcfg`, the script builds the `dependencies` target, then if `OPENRV_FIX_GC_INCLUDE` is not `0` (default `1`), it creates `install/include/gc/` and copies `gc.h` and `gc_allocator.h` there when needed. Set **`OPENRV_FIX_GC_INCLUDE=0`** to skip this fix (e.g. if your bdwgc already installs the nested layout).
-- **Caching**: (1) The OpenRV clone is cached by **tag + commit SHA** (`openrv-rocky9-<tag>-<sha>`). (2) Docker layer cache: Buildx `scope=rocky9` for the vanilla image, `scope=rocky9-ext` for the extended image.
+- **Caching**: (1) The OpenRV clone is cached by **tag + commit SHA** (`openrv-rocky9-<tag>-<sha>`). (2) Docker layer cache: Buildx `scope=rocky9` for the vanilla image, `scope=rocky9-ext` for the extended image. (3) Build cache: `OpenRV/_build` is mounted from the host and restored/saved via `actions/cache/{restore,save}` with a **tag + SHA prefix**, so CMake ExternalProject stamps allow incremental resumes after failures.
 
 ### Linux (Ubuntu 22.04, experimental)
 - **Custom Dockerfile**: `ci/linux/Dockerfile.ubuntu22.04` is a translation of the upstream Rocky 9 Dockerfile with equivalent Ubuntu packages.
@@ -32,7 +32,7 @@ This repo contains **only** build and CI configuration and scripts for building 
 - **VS environment**: The script imports the VS 2022 x64 environment directly into PowerShell rather than using nested `cmd /c` calls. The workflow also runs `ilammy/msvc-dev-cmd@v1` so the runner has MSVC (`cl`, `link`, INCLUDE, LIB) in the environment; the script sets `CC=cl` and `CXX=cl` so Meson and other dependency builds use MSVC instead of probing for "icl" or POSIX toolchains.
 - **DAV1D on Windows**: We apply a build-time patch to the cloned OpenRV's `cmake/dependencies/dav1d.cmake` (in the Configure phase) to add `-Denable_asm=false` for the Meson build, avoiding pthread/POSIX detection issues. Patch: `ci/windows/patches/dav1d_windows_meson.patch`. We do not modify upstream source except this applied patch on the clone.
 - **No alias reliance**: CMake configure and build are called directly, not via `rvcmds.sh` aliases, for reliable exit code handling.
-- **Dependencies cache**: `C:\OpenRV\_build` is cached by tag + commit SHA (`openrv-windows-deps-<tag>-<sha>`). The first run for a tag builds all ~1100 dependency targets (~40+ min); re-runs or the same tag (same SHA) restore the cache and skip the Dependencies step. Overwriting the tag (new SHA) invalidates the cache so deps are rebuilt.
+- **Build cache**: `C:\OpenRV\_build` is restored/saved via `actions/cache/{restore,save}` with a **tag + SHA prefix**. The workflow always runs `BuildDependencies`, and CMake ExternalProject stamps skip already completed deps and resume from partial progress on failures. Overwriting a tag (new SHA) invalidates the cache.
 
 ## Conventions
 
@@ -57,8 +57,8 @@ This repo contains **only** build and CI configuration and scripts for building 
 
 ## Caching
 
-- **Linux**: Docker layer cache via Buildx (`cache-from`/`cache-to` type=gha, with `scope` per distro).
-- **Windows**: `actions/cache` for Qt, Strawberry Perl, Rust, MSYS2, and pip. Cache keys are in `.github/workflows/openrv-release.yml` (e.g. `openrv-msys2-v1`). When changing the MSYS2 pacman package list or Qt version, bump the corresponding cache key so the next run repopulates the cache.
+- **Linux**: Docker layer cache via Buildx (`cache-from`/`cache-to` type=gha, with `scope` per distro). Build cache uses `actions/cache/restore` + `actions/cache/save` for a host-mounted `OpenRV/_build` directory, keyed by tag + commit SHA prefix to allow incremental resumes after failures.
+- **Windows**: `actions/cache` for Qt, Strawberry Perl, Rust, MSYS2, and pip. Build cache uses `actions/cache/restore` + `actions/cache/save` for `C:\OpenRV\_build`, keyed by tag + commit SHA prefix so ExternalProject stamps skip completed deps.
 
 ## Optional dependencies (BMD DeckLink, NDI)
 

@@ -72,6 +72,14 @@ jobs:
       - name: Build extended Docker image (vanilla + GL/devel packages)
         run: docker build -f ci/linux/Dockerfile.rocky9-cy2024 -t openrv-build-rocky9 .
 
+      - name: Restore OpenRV build cache (Rocky 9)
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}/openrv-build-cache-rocky9
+          key: openrv-rocky9-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-${{ github.run_id }}
+          restore-keys: |
+            openrv-rocky9-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-
+
       - name: Run OpenRV build (Rocky 9)
         env:
           BMD_DECKLINK_SDK_ZIP_URL: ${{ secrets.BMD_DECKLINK_SDK_ZIP_URL }}
@@ -87,9 +95,17 @@ jobs:
             -e DISTRO_SUFFIX=linux-rocky9 \
             $BMD_E $NDI_E \
             -v "${{ github.workspace }}/ci/linux:/ci:ro" \
+            -v "${{ github.workspace }}/openrv-build-cache-rocky9:/home/rv/OpenRV/_build" \
             -v "${{ github.workspace }}/out:/out" \
             openrv-build-rocky9 \
             bash /ci/build_in_container.sh
+
+      - name: Save OpenRV build cache (Rocky 9)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/openrv-build-cache-rocky9
+          key: openrv-rocky9-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-${{ github.run_id }}
 
       - name: Upload Rocky9 artifact
         uses: actions/upload-artifact@v4
@@ -116,6 +132,15 @@ jobs:
           docker-images: true
           swap-storage: true
 
+      # Resolve tag to commit SHA so cache key changes when the tag is overwritten
+      - name: Get OpenRV tag commit SHA
+        id: openrv-sha
+        run: |
+          SHA=$(git ls-remote "${{ env.OPENRV_REPO }}" "refs/tags/${{ env.OPENRV_TAG }}^{}" 2>/dev/null | cut -f1)
+          [ -z "$SHA" ] && SHA=$(git ls-remote "${{ env.OPENRV_REPO }}" "refs/tags/${{ env.OPENRV_TAG }}" 2>/dev/null | cut -f1)
+          echo "sha=${SHA}" >> $GITHUB_OUTPUT
+          echo "Resolved ${{ env.OPENRV_TAG }} to ${SHA}"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -129,6 +154,14 @@ jobs:
           cache-from: type=gha,scope=ubuntu
           cache-to: type=gha,mode=max,scope=ubuntu
           push: false
+
+      - name: Restore OpenRV build cache (Ubuntu 22.04)
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}/openrv-build-cache-ubuntu
+          key: openrv-ubuntu-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-${{ github.run_id }}
+          restore-keys: |
+            openrv-ubuntu-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-
 
       - name: Run OpenRV build (Ubuntu 22.04)
         env:
@@ -144,8 +177,16 @@ jobs:
             -e OPENRV_REPO="${{ env.OPENRV_REPO }}" \
             -e DISTRO_SUFFIX=linux-ubuntu22.04 \
             $BMD_E $NDI_E \
+            -v "${{ github.workspace }}/openrv-build-cache-ubuntu:/home/rv/OpenRV/_build" \
             -v "${{ github.workspace }}/out:/out" \
             openrv-build-ubuntu
+
+      - name: Save OpenRV build cache (Ubuntu 22.04)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/openrv-build-cache-ubuntu
+          key: openrv-ubuntu-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-${{ github.run_id }}
 
       - name: Upload Ubuntu artifact
         if: success()
@@ -352,6 +393,14 @@ jobs:
             -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
         shell: pwsh
 
+      - name: Restore OpenRV build cache (Windows)
+        uses: actions/cache/restore@v4
+        with:
+          path: C:\OpenRV\_build
+          key: openrv-windows-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-${{ github.run_id }}
+          restore-keys: |
+            openrv-windows-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-
+
       - name: Build OpenRV (Windows) - Configure
         run: |
           .\ci\windows\build_windows.ps1 -Phase Configure `
@@ -359,15 +408,7 @@ jobs:
             -BMDDeckLinkSdkZipPath "${{ env.BMD_PATH }}" -NDISdkRoot "${{ env.NDI_ROOT }}"
         shell: pwsh
 
-      - name: Restore OpenRV dependencies build cache
-        id: deps-cache
-        uses: actions/cache@v4
-        with:
-          path: C:\OpenRV\_build
-          key: openrv-windows-deps-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}
-
       - name: Build OpenRV (Windows) - Dependencies
-        if: steps.deps-cache.outputs.cache-hit != 'true'
         run: |
           .\ci\windows\build_windows.ps1 -Phase BuildDependencies `
             -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
@@ -384,6 +425,13 @@ jobs:
           .\ci\windows\build_windows.ps1 -Phase Verify `
             -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
         shell: pwsh
+
+      - name: Save OpenRV build cache (Windows)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: C:\OpenRV\_build
+          key: openrv-windows-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-${{ github.run_id }}
 
       - name: Package OpenRV (Windows)
         run: |
