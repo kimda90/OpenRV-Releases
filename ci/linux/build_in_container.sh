@@ -64,21 +64,16 @@ if [[ -z "${_dav1d_patched}" ]]; then
     echo "WARNING: dav1d patch not applied (upstream cmake/dependencies/dav1d.cmake may have changed). Build may fail with 'fatal: not a git repository' for dav1d."
 fi
 
-# Patch GLEW cmake to fix duplicate variable definitions in src/glew.c (lines 2059-2068)
-# Try main-style patch first (with OpenGL-Registry PATCH_COMMAND), then old-style (no upstream PATCH_COMMAND)
-_glew_patched=
-for _patch in "${CI_SCRIPT_DIR}/patches/glew_fix_duplicates_main.patch" "${CI_SCRIPT_DIR}/patches/glew_fix_duplicates.patch"; do
-    if [[ -f "${_patch}" ]]; then
-        echo "[2c/6] Patching glew.cmake to remove duplicate definitions..."
-        if patch -p1 --forward -r - < "${_patch}"; then
-            echo "glew.cmake patched successfully"
-            _glew_patched=1
-            break
-        fi
-    fi
-done
-if [[ -z "${_glew_patched}" ]]; then
-    echo "WARNING: GLEW patch not applied (upstream cmake/dependencies/glew.cmake may have changed). Build may fail on GLEW."
+# Upgrade GLEW to 2.3.0 (fixes duplicate variable definitions, Issue #449); no patching needed
+echo "[2c/6] Upgrading GLEW to 2.3.0..."
+GLEW_CMAKE="cmake/dependencies/glew.cmake"
+if [[ -f "$GLEW_CMAKE" ]]; then
+    sed -i 's/"e1a80a9f12d7def202d394f46e44cfced1104bfb"/"glew-2.3.0"/' "$GLEW_CMAKE"
+    sed -i 's/9bfc689dabeb4e305ce80b5b6f28bcf9/b26a202e0bda8d010ca64e6e5f9b8739/' "$GLEW_CMAKE"
+    sed -i 's/2\.2\.0/2.3.0/g' "$GLEW_CMAKE"
+    echo "GLEW upgraded to 2.3.0"
+else
+    echo "WARNING: $GLEW_CMAKE not found; GLEW version unchanged."
 fi
 
 # Optional BMD and NDI: download when URLs provided and set CMake args
