@@ -48,22 +48,29 @@ if ! grep -q 'RV_CFG_EXTRA' rvcmds.sh; then
 fi
 
 # Patch dav1d to use GIT instead of URL zip so Meson has .git for vcs_version.h (fix "fatal: not a git repository")
-if [[ -f "${CI_SCRIPT_DIR}/patches/dav1d_use_git.patch" ]]; then
-    echo "[2b/6] Patching dav1d.cmake to use GIT (fix vcs_version.h when building from release zip)..."
-    if patch -p1 --forward -r - < "${CI_SCRIPT_DIR}/patches/dav1d_use_git.patch" 2>/dev/null; then
-        echo "dav1d.cmake patched successfully"
-    else
-        echo "dav1d patch not applied (may already be applied or upstream changed); continuing"
+# Try main-style (CONFIGURE_COMMAND split across two lines) first, then oneline-style for older tags
+_dav1d_patched=
+for _patch in "${CI_SCRIPT_DIR}/patches/dav1d_use_git.patch" "${CI_SCRIPT_DIR}/patches/dav1d_use_git_oneline.patch"; do
+    if [[ -f "${_patch}" ]]; then
+        echo "[2b/6] Patching dav1d.cmake to use GIT (fix vcs_version.h when building from release zip)..."
+        if patch -p1 --forward -r - < "${_patch}"; then
+            echo "dav1d.cmake patched successfully"
+            _dav1d_patched=1
+            break
+        fi
     fi
+done
+if [[ -z "${_dav1d_patched}" ]]; then
+    echo "WARNING: dav1d patch not applied (upstream cmake/dependencies/dav1d.cmake may have changed). Build may fail with 'fatal: not a git repository' for dav1d."
 fi
 
 # Patch GLEW cmake to fix duplicate variable definitions in src/glew.c (lines 2059-2068)
 if [[ -f "${CI_SCRIPT_DIR}/patches/glew_fix_duplicates.patch" ]]; then
     echo "[2c/6] Patching glew.cmake to remove duplicate definitions..."
-    if patch -p1 --forward -r - < "${CI_SCRIPT_DIR}/patches/glew_fix_duplicates.patch" 2>/dev/null; then
+    if patch -p1 --forward -r - < "${CI_SCRIPT_DIR}/patches/glew_fix_duplicates.patch"; then
         echo "glew.cmake patched successfully"
     else
-        echo "GLEW patch not applied (may already be applied or upstream changed); continuing"
+        echo "WARNING: GLEW patch not applied (may already be applied or upstream changed). Build may fail on GLEW."
     fi
 fi
 
