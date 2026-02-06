@@ -65,13 +65,20 @@ if [[ -z "${_dav1d_patched}" ]]; then
 fi
 
 # Patch GLEW cmake to fix duplicate variable definitions in src/glew.c (lines 2059-2068)
-if [[ -f "${CI_SCRIPT_DIR}/patches/glew_fix_duplicates.patch" ]]; then
-    echo "[2c/6] Patching glew.cmake to remove duplicate definitions..."
-    if patch -p1 --forward -r - < "${CI_SCRIPT_DIR}/patches/glew_fix_duplicates.patch"; then
-        echo "glew.cmake patched successfully"
-    else
-        echo "WARNING: GLEW patch not applied (may already be applied or upstream changed). Build may fail on GLEW."
+# Try main-style patch first (with OpenGL-Registry PATCH_COMMAND), then old-style (no upstream PATCH_COMMAND)
+_glew_patched=
+for _patch in "${CI_SCRIPT_DIR}/patches/glew_fix_duplicates_main.patch" "${CI_SCRIPT_DIR}/patches/glew_fix_duplicates.patch"; do
+    if [[ -f "${_patch}" ]]; then
+        echo "[2c/6] Patching glew.cmake to remove duplicate definitions..."
+        if patch -p1 --forward -r - < "${_patch}"; then
+            echo "glew.cmake patched successfully"
+            _glew_patched=1
+            break
+        fi
     fi
+done
+if [[ -z "${_glew_patched}" ]]; then
+    echo "WARNING: GLEW patch not applied (upstream cmake/dependencies/glew.cmake may have changed). Build may fail on GLEW."
 fi
 
 # Optional BMD and NDI: download when URLs provided and set CMake args
