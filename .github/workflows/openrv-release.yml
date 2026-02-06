@@ -17,6 +17,7 @@ jobs:
     name: Linux (Rocky 9)
     runs-on: ubuntu-latest
     continue-on-error: false
+    if: false # DISABLED
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -104,6 +105,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -146,7 +158,6 @@ jobs:
     name: Windows
     runs-on: windows-latest
     continue-on-error: false
-    if: false  # DISABLED
     steps:
       - name: Checkout
         uses: actions/checkout@v4
