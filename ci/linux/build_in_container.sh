@@ -208,6 +208,17 @@ if [[ "${OPENRV_FIX_GC_INCLUDE:-1}" != "0" ]]; then
     fi
 fi
 
+# Fix OpenSSL lib path: make_openssl.py installs to lib64 for CY2024 on Linux, but openssl.cmake
+# expects install/lib when RHEL_VERBOSE is not set (e.g. on Ubuntu, which has no /etc/redhat-release).
+# Copy lib64 -> lib so the linker finds libcrypto.so.3 / libssl.so.3.
+if [[ "${RV_VFX_PLATFORM}" = "CY2024" ]] && [[ -d "${RV_BUILD}/RV_DEPS_OPENSSL/install/lib64" ]]; then
+  if [[ ! -f "${RV_BUILD}/RV_DEPS_OPENSSL/install/lib/libcrypto.so.3" ]] && [[ -f "${RV_BUILD}/RV_DEPS_OPENSSL/install/lib64/libcrypto.so.3" ]]; then
+    echo "Fixing OpenSSL lib path (lib64 -> lib) for CY2024 non-RHEL..."
+    mkdir -p "${RV_BUILD}/RV_DEPS_OPENSSL/install/lib"
+    cp -an "${RV_BUILD}/RV_DEPS_OPENSSL/install/lib64/"* "${RV_BUILD}/RV_DEPS_OPENSSL/install/lib/" 2>/dev/null || true
+  fi
+fi
+
 # Build main executable
 echo "Running rvbuild..."
 rvbuild || build_failed=1
@@ -262,6 +273,14 @@ if [[ -n "${build_failed:-}" || ! -f "$RV_BIN" ]]; then
             echo "=== GC (bdwgc) build logs (last 80 lines each) ===" >&2
             for f in $GC_BUILD_LOG; do echo "--- $f ---"; tail -80 "$f" 2>/dev/null; done >&2
         fi
+    fi
+
+    # OpenSSL: show install lib/lib64 when build failed (helps diagnose libcrypto.so.3 not found on Ubuntu)
+    if [[ -d _build/RV_DEPS_OPENSSL ]]; then
+        echo "" >&2
+        echo "=== RV_DEPS_OPENSSL install lib dirs ===" >&2
+        ls -la _build/RV_DEPS_OPENSSL/install/lib/ 2>/dev/null || true >&2
+        ls -la _build/RV_DEPS_OPENSSL/install/lib64/ 2>/dev/null || true >&2
     fi
     
     # Check CMakeError.log

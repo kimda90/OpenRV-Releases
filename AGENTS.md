@@ -25,6 +25,7 @@ This repo contains **only** build and CI configuration and scripts for building 
 ### Linux (Ubuntu 22.04, experimental)
 - **Custom Dockerfile**: `ci/linux/Dockerfile.ubuntu22.04` is a translation of the upstream Rocky 9 Dockerfile with equivalent Ubuntu packages.
 - **Package mapping**: See the Dockerfile for Rocky 9 → Ubuntu package mappings. Critical packages for GLEW/OpenGL include `libgl-dev`, `libglvnd-dev`, `libdrm-dev`.
+- **OpenSSL on Ubuntu**: Upstream `make_openssl.py` installs to `install/lib64` for CY2024 on Linux, while `openssl.cmake` expects `install/lib` when `RHEL_VERBOSE` is unset (Ubuntu has no `/etc/redhat-release`). After building the dependencies target, `build_in_container.sh` copies `RV_DEPS_OPENSSL/install/lib64` into `install/lib` when needed so the linker finds `libcrypto.so.3` / `libssl.so.3`.
 
 ### Windows
 - **Pure PowerShell**: `build_windows.ps1` uses a pure PowerShell approach to avoid interpreter nesting issues (no bash/cmd/PowerShell chains).
