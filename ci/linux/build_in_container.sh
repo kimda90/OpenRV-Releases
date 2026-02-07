@@ -77,6 +77,15 @@ if [[ -n "${OPENRV_BUILD_CACHE_DIR:-}" ]]; then
     ln -snf "$OPENRV_BUILD_CACHE_DIR" _build
 fi
 
+# Ubuntu: clear CMake and AUTOMOC state when using cache so moc paths are regenerated
+# (avoids .../TwkQtChat/TwkQtChat/Client.h wrong include). Keeps RV_DEPS_* and other cache.
+if [[ "$DISTRO_SUFFIX" == *ubuntu* ]] && { [[ -f _build/CMakeCache.txt ]] || [[ -d _build/CMakeFiles ]]; }; then
+    echo "Clearing CMake and AUTOMOC state for Ubuntu (fix TwkQtChat include path)..."
+    rm -f _build/CMakeCache.txt
+    rm -rf _build/CMakeFiles
+    find _build/src -type d -name '*_autogen' -exec rm -rf {} + 2>/dev/null || true
+fi
+
 # Patch rvcmds.sh to append RV_CFG_EXTRA so we can pass BMD/NDI CMake args
 echo "[2/6] Patching rvcmds.sh for RV_CFG_EXTRA support..."
 if ! grep -q 'RV_CFG_EXTRA' rvcmds.sh; then
