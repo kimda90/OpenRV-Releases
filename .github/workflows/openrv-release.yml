@@ -72,19 +72,6 @@ jobs:
       - name: Build extended Docker image (vanilla + GL/devel packages)
         run: docker build -f ci/linux/Dockerfile.rocky9-cy2024 -t openrv-build-rocky9 .
 
-      - name: Restore OpenRV build cache (Rocky 9)
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ github.workspace }}/openrv-build-cache-rocky9
-          key: openrv-rocky9-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-${{ github.run_id }}
-          restore-keys: |
-            openrv-rocky9-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-
-
-      - name: Prepare build cache directory (Rocky 9)
-        run: |
-          mkdir -p ${{ github.workspace }}/openrv-build-cache-rocky9
-          chmod 777 ${{ github.workspace }}/openrv-build-cache-rocky9
-
       - name: Run OpenRV build (Rocky 9)
         env:
           BMD_DECKLINK_SDK_ZIP_URL: ${{ secrets.BMD_DECKLINK_SDK_ZIP_URL }}
@@ -98,20 +85,11 @@ jobs:
             -e OPENRV_TAG="${{ env.OPENRV_TAG }}" \
             -e OPENRV_REPO="${{ env.OPENRV_REPO }}" \
             -e DISTRO_SUFFIX=linux-rocky9 \
-            -e OPENRV_BUILD_CACHE_DIR=/home/rv/openrv-build-cache \
             $BMD_E $NDI_E \
             -v "${{ github.workspace }}/ci/linux:/ci:ro" \
-            -v "${{ github.workspace }}/openrv-build-cache-rocky9:/home/rv/openrv-build-cache" \
             -v "${{ github.workspace }}/out:/out" \
             openrv-build-rocky9 \
             bash /ci/build_in_container.sh
-
-      - name: Save OpenRV build cache (Rocky 9)
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ github.workspace }}/openrv-build-cache-rocky9
-          key: openrv-rocky9-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-${{ github.run_id }}
 
       - name: Upload Rocky9 artifact
         uses: actions/upload-artifact@v4
@@ -176,19 +154,6 @@ jobs:
       - name: Build extended Docker image (vanilla + GL/devel packages)
         run: docker build -f ci/linux/Dockerfile.rocky8-extended -t openrv-build-rocky8 .
 
-      - name: Restore OpenRV build cache (Rocky 8)
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ github.workspace }}/openrv-build-cache-rocky8
-          key: openrv-rocky8-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-${{ github.run_id }}
-          restore-keys: |
-            openrv-rocky8-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-
-
-      - name: Prepare build cache directory (Rocky 8)
-        run: |
-          mkdir -p ${{ github.workspace }}/openrv-build-cache-rocky8
-          chmod 777 ${{ github.workspace }}/openrv-build-cache-rocky8
-
       - name: Run OpenRV build (Rocky 8)
         env:
           BMD_DECKLINK_SDK_ZIP_URL: ${{ secrets.BMD_DECKLINK_SDK_ZIP_URL }}
@@ -203,20 +168,11 @@ jobs:
             -e OPENRV_REPO="${{ env.OPENRV_REPO }}" \
             -e DISTRO_SUFFIX=linux-rocky8 \
             -e RV_VFX_PLATFORM=CY2023 \
-            -e OPENRV_BUILD_CACHE_DIR=/home/rv/openrv-build-cache \
             $BMD_E $NDI_E \
             -v "${{ github.workspace }}/ci/linux:/ci:ro" \
-            -v "${{ github.workspace }}/openrv-build-cache-rocky8:/home/rv/openrv-build-cache" \
             -v "${{ github.workspace }}/out:/out" \
             openrv-build-rocky8 \
             bash /ci/build_in_container.sh
-
-      - name: Save OpenRV build cache (Rocky 8)
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ github.workspace }}/openrv-build-cache-rocky8
-          key: openrv-rocky8-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-${{ github.run_id }}
 
       - name: Upload Rocky8 artifact
         uses: actions/upload-artifact@v4
