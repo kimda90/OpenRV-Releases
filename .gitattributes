@@ -1,0 +1,2 @@
+# Patch files must use LF so git apply works on all platforms (Windows was failing with "corrupt patch at line 11" when CRLF).
+ci/windows/patches/*.patch text eol=lf

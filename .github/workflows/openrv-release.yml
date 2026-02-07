@@ -183,6 +183,7 @@ jobs:
           [ -n "$BMD_DECKLINK_SDK_ZIP_URL" ] && BMD_E="-e BMD_DECKLINK_SDK_ZIP_URL=$BMD_DECKLINK_SDK_ZIP_URL"
           [ -n "$NDI_SDK_URL" ] && NDI_E="-e NDI_SDK_URL=$NDI_SDK_URL"
           docker run --rm \
+            --entrypoint bash \
             -e OPENRV_TAG="${{ env.OPENRV_TAG }}" \
             -e OPENRV_REPO="${{ env.OPENRV_REPO }}" \
             -e DISTRO_SUFFIX=linux-ubuntu22.04 \
@@ -191,7 +192,7 @@ jobs:
             -v "${{ github.workspace }}/openrv-build-cache-ubuntu:/home/rv/OpenRV/_build" \
             -v "${{ github.workspace }}/out:/out" \
             openrv-build-ubuntu \
-            bash /ci/build_in_container.sh
+            /ci/build_in_container.sh
 
       - name: Save OpenRV build cache (Ubuntu 22.04)
         if: always()
