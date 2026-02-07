@@ -80,6 +80,11 @@ jobs:
           restore-keys: |
             openrv-rocky9-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-
 
+      - name: Prepare build cache directory (Rocky 9)
+        run: |
+          mkdir -p ${{ github.workspace }}/openrv-build-cache-rocky9
+          chmod 777 ${{ github.workspace }}/openrv-build-cache-rocky9
+
       - name: Run OpenRV build (Rocky 9)
         env:
           BMD_DECKLINK_SDK_ZIP_URL: ${{ secrets.BMD_DECKLINK_SDK_ZIP_URL }}
@@ -162,6 +167,11 @@ jobs:
           key: openrv-ubuntu-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-${{ github.run_id }}
           restore-keys: |
             openrv-ubuntu-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-
+
+      - name: Prepare build cache directory (Ubuntu 22.04)
+        run: |
+          mkdir -p ${{ github.workspace }}/openrv-build-cache-ubuntu
+          chmod 777 ${{ github.workspace }}/openrv-build-cache-ubuntu
 
       - name: Run OpenRV build (Ubuntu 22.04)
         env:
@@ -427,7 +437,7 @@ jobs:
         shell: pwsh
 
       - name: Save OpenRV build cache (Windows)
-        if: always()
+        if: always() && hashFiles('C:\OpenRV\_build\CMakeCache.txt') != ''
         uses: actions/cache/save@v4
         with:
           path: C:\OpenRV\_build

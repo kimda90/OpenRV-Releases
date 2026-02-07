@@ -29,34 +29,27 @@ fi
 mkdir -p "$WORKDIR"
 cd "$WORKDIR"
 
-# Preserve mounted build cache if OpenRV repo is missing
-_build_cache_path=""
-if [[ -d OpenRV/_build ]]; then
-    _build_cache_path="${WORKDIR}/_build_cache"
-    mv OpenRV/_build "${_build_cache_path}"
-fi
-
-# Clone and checkout tag
+# Clone and checkout tag (handle pre-existing _build mount from cache)
 echo "[1/6] Cloning OpenRV..."
 if [[ ! -d OpenRV/.git ]]; then
-    rm -rf OpenRV
-    git clone --recursive "$OPENRV_REPO" OpenRV
-fi
-
-# Restore cached _build after clone
-if [[ -n "${_build_cache_path}" && -d "${_build_cache_path}" ]]; then
-    mkdir -p OpenRV
-    mv "${_build_cache_path}" OpenRV/_build
-fi
-
-# Fix ownership of mounted _build cache (may be owned by a different UID)
-if [[ -d OpenRV/_build && ! -w OpenRV/_build ]]; then
-    echo "Fixing _build ownership..."
-    if command -v sudo >/dev/null 2>&1; then
-        sudo chown -R "$(id -u):$(id -g)" OpenRV/_build 2>/dev/null || true
-    elif [[ "$(id -u)" = "0" ]]; then
-        chown -R "$(id -u):$(id -g)" OpenRV/_build 2>/dev/null || true
+    # _build may be a Docker bind mount with cached artifacts - preserve it during clone
+    if [[ -d OpenRV ]]; then
+        # Remove everything except _build
+        find OpenRV -mindepth 1 -maxdepth 1 ! -name '_build' -exec rm -rf {} + 2>/dev/null || true
     fi
+    # Clone into temp dir, then move contents into OpenRV (preserving _build mount)
+    git clone --recursive "$OPENRV_REPO" OpenRV_tmp
+    mkdir -p OpenRV
+    # Move git repo and source files (use bash extglob to exclude _build if it exists in temp)
+    shopt -s dotglob
+    for item in OpenRV_tmp/*; do
+        [[ "$(basename "$item")" != "_build" ]] && mv "$item" OpenRV/ 2>/dev/null
+    done
+    for item in OpenRV_tmp/.*; do
+        [[ "$(basename "$item")" != "." && "$(basename "$item")" != ".." && "$(basename "$item")" != "_build" ]] && mv "$item" OpenRV/ 2>/dev/null || true
+    done
+    shopt -u dotglob
+    rm -rf OpenRV_tmp
 fi
 cd OpenRV
 git fetch --tags
