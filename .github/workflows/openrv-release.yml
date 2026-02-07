@@ -378,6 +378,24 @@ jobs:
             Write-Host "Prepended VC bin (ml64) to PATH: $vcBin"
           }
 
+      # Prepend patch/MSYS2 to PATH so MSBuild subprocesses (e.g. RV_DEPS_IMGUI PATCH_COMMAND) find patch.exe
+      - name: Prepend patch and MSYS2 to PATH for MSBuild subprocesses
+        shell: pwsh
+        run: |
+          $patchDirs = @(
+            "C:\Program Files\Git\usr\bin",
+            "C:\msys64\usr\bin",
+            "C:\msys64\mingw64\bin"
+          )
+          $existing = $env:PATH
+          $prepend = ($patchDirs | Where-Object { Test-Path $_ }) -join ';'
+          if ($prepend) {
+            echo "PATH<<ENDOFPATH" >> $env:GITHUB_ENV
+            echo "$prepend;$existing" >> $env:GITHUB_ENV
+            echo "ENDOFPATH" >> $env:GITHUB_ENV
+            Write-Host "Prepended to PATH for subsequent steps: $prepend"
+          }
+
       - name: Download optional SDKs
         id: sdks
         env:
