@@ -191,21 +191,26 @@ set > "$tempEnv"
 # ============================================================================
 function Invoke-PhaseClone {
     Write-Host "[Phase: Clone] OpenRV $Tag -> $WorkDir" -ForegroundColor Cyan
+    # Use Git for Windows (SChannel) when available so HTTPS clone works even when
+    # PATH prefers MSYS2's git (OpenSSL-only), which would fail with schannel config.
+    $gitExe = "C:\Program Files\Git\bin\git.exe"
+    if (-not (Test-Path $gitExe)) { $gitExe = "git" }
+
     if (Test-Path $WorkDir) {
         Write-Host "Removing existing $WorkDir..."
         Remove-Item -Recurse -Force $WorkDir
     }
     New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
 
-    & git clone --recursive $RepoUrl $WorkDir
+    & $gitExe clone --recursive $RepoUrl $WorkDir
     if ($LASTEXITCODE -ne 0) { throw "git clone failed" }
 
     Push-Location $WorkDir
     try {
-        & git fetch --tags
-        & git checkout "refs/tags/$Tag"
+        & $gitExe fetch --tags
+        & $gitExe checkout "refs/tags/$Tag"
         if ($LASTEXITCODE -ne 0) { throw "git checkout failed" }
-        & git submodule update --init --recursive
+        & $gitExe submodule update --init --recursive
         if ($LASTEXITCODE -ne 0) { throw "git submodule update failed" }
     } finally {
         Pop-Location

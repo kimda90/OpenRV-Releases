@@ -69,6 +69,14 @@ git fetch --tags
 git checkout "refs/tags/${OPENRV_TAG}"
 git submodule update --init --recursive
 
+# When CI mounts the build cache at an alternate path (OPENRV_BUILD_CACHE_DIR), symlink
+# OpenRV/_build to it. This avoids Docker creating /home/rv/OpenRV as root when mounting
+# directly at /home/rv/OpenRV/_build, which would make the directory unwritable for user rv.
+if [[ -n "${OPENRV_BUILD_CACHE_DIR:-}" ]]; then
+    echo "Linking _build to cache directory: ${OPENRV_BUILD_CACHE_DIR}"
+    ln -snf "$OPENRV_BUILD_CACHE_DIR" _build
+fi
+
 # Patch rvcmds.sh to append RV_CFG_EXTRA so we can pass BMD/NDI CMake args
 echo "[2/6] Patching rvcmds.sh for RV_CFG_EXTRA support..."
 if ! grep -q 'RV_CFG_EXTRA' rvcmds.sh; then

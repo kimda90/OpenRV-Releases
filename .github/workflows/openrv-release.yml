@@ -98,9 +98,10 @@ jobs:
             -e OPENRV_TAG="${{ env.OPENRV_TAG }}" \
             -e OPENRV_REPO="${{ env.OPENRV_REPO }}" \
             -e DISTRO_SUFFIX=linux-rocky9 \
+            -e OPENRV_BUILD_CACHE_DIR=/home/rv/openrv-build-cache \
             $BMD_E $NDI_E \
             -v "${{ github.workspace }}/ci/linux:/ci:ro" \
-            -v "${{ github.workspace }}/openrv-build-cache-rocky9:/home/rv/OpenRV/_build" \
+            -v "${{ github.workspace }}/openrv-build-cache-rocky9:/home/rv/openrv-build-cache" \
             -v "${{ github.workspace }}/out:/out" \
             openrv-build-rocky9 \
             bash /ci/build_in_container.sh
@@ -202,9 +203,10 @@ jobs:
             -e OPENRV_REPO="${{ env.OPENRV_REPO }}" \
             -e DISTRO_SUFFIX=linux-rocky8 \
             -e RV_VFX_PLATFORM=CY2023 \
+            -e OPENRV_BUILD_CACHE_DIR=/home/rv/openrv-build-cache \
             $BMD_E $NDI_E \
             -v "${{ github.workspace }}/ci/linux:/ci:ro" \
-            -v "${{ github.workspace }}/openrv-build-cache-rocky8:/home/rv/OpenRV/_build" \
+            -v "${{ github.workspace }}/openrv-build-cache-rocky8:/home/rv/openrv-build-cache" \
             -v "${{ github.workspace }}/out:/out" \
             openrv-build-rocky8 \
             bash /ci/build_in_container.sh
@@ -294,7 +296,8 @@ jobs:
             -e DISTRO_SUFFIX=linux-ubuntu22.04 \
             $BMD_E $NDI_E \
             -v "${{ github.workspace }}/ci/linux:/ci:ro" \
-            -v "${{ github.workspace }}/openrv-build-cache-ubuntu:/home/rv/OpenRV/_build" \
+            -e OPENRV_BUILD_CACHE_DIR=/home/rv/openrv-build-cache \
+            -v "${{ github.workspace }}/openrv-build-cache-ubuntu:/home/rv/openrv-build-cache" \
             -v "${{ github.workspace }}/out:/out" \
             openrv-build-ubuntu \
             /ci/build_in_container.sh
@@ -528,10 +531,6 @@ jobs:
           "BMD_PATH=$bmdPath" | Out-File -FilePath $env:GITHUB_ENV -Append
           "NDI_ROOT=$ndiRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
         shell: pwsh
-
-      - name: Set Git SSL backend for clone (MSYS2 git uses OpenSSL)
-        shell: pwsh
-        run: git config --global http.sslBackend openssl
 
       - name: Build OpenRV (Windows) - Clone
         run: |
