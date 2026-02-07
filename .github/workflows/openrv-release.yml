@@ -187,9 +187,11 @@ jobs:
             -e OPENRV_REPO="${{ env.OPENRV_REPO }}" \
             -e DISTRO_SUFFIX=linux-ubuntu22.04 \
             $BMD_E $NDI_E \
+            -v "${{ github.workspace }}/ci/linux:/ci:ro" \
             -v "${{ github.workspace }}/openrv-build-cache-ubuntu:/home/rv/OpenRV/_build" \
             -v "${{ github.workspace }}/out:/out" \
-            openrv-build-ubuntu
+            openrv-build-ubuntu \
+            bash /ci/build_in_container.sh
 
       - name: Save OpenRV build cache (Ubuntu 22.04)
         if: always()
@@ -360,6 +362,19 @@ jobs:
             echo "PATH<<ENDOFPATH" >> $env:GITHUB_ENV
             echo "$pathValue" >> $env:GITHUB_ENV
             echo "ENDOFPATH" >> $env:GITHUB_ENV
+          }
+
+      - name: Prepend VC tools (ml64) to PATH for MSBuild subprocesses
+        shell: pwsh
+        run: |
+          $clPath = (Get-Command cl.exe -ErrorAction SilentlyContinue).Source
+          if ($clPath) {
+            $vcBin = Split-Path $clPath -Parent
+            $currentPath = $env:PATH
+            echo "PATH<<ENDOFPATH" >> $env:GITHUB_ENV
+            echo "$vcBin;$currentPath" >> $env:GITHUB_ENV
+            echo "ENDOFPATH" >> $env:GITHUB_ENV
+            Write-Host "Prepended VC bin (ml64) to PATH: $vcBin"
           }
 
       - name: Download optional SDKs

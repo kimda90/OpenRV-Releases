@@ -253,6 +253,19 @@ function Invoke-PhaseConfigure {
             Pop-Location
         }
     }
+    $ffmpegPatch = Join-Path $patchDir "ffmpeg_configure_msvc_first.patch"
+    if (Test-Path $ffmpegPatch) {
+        Write-Host "Applying FFmpeg configure (--toolchain=msvc first) patch..." -ForegroundColor Yellow
+        Push-Location $WorkDir
+        try {
+            & git apply --ignore-whitespace $ffmpegPatch 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "Warning: FFmpeg patch could not be applied (maybe already applied or OpenRV version changed). Continuing." -ForegroundColor Yellow
+            }
+        } finally {
+            Pop-Location
+        }
+    }
 
     $cmakeExtraArgs = @()
     if ($BMDDeckLinkSdkZipPath -and (Test-Path $BMDDeckLinkSdkZipPath)) {

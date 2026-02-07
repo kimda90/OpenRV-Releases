@@ -1,0 +1,10 @@
+--- a/cmake/dependencies/ffmpeg.cmake
++++ b/cmake/dependencies/ffmpeg.cmake
+@@ -394,7 +394,7 @@ SEPARATE_ARGUMENTS(RV_FFMPEG_PATCH_COMMAND_STEP)
+   PATCH_COMMAND ${RV_FFMPEG_PATCH_COMMAND_STEP}
+   CONFIGURE_COMMAND
+-    ${CMAKE_COMMAND} -E env "PKG_CONFIG_PATH=${_ffmpeg_pkg_config_path}" ${_configure_command} --prefix=${_install_dir} ${RV_FFMPEG_COMMON_CONFIG_OPTIONS}
++    ${CMAKE_COMMAND} -E env "PKG_CONFIG_PATH=${_ffmpeg_pkg_config_path}" ${_configure_command} --toolchain=msvc --prefix=${_install_dir} ${RV_FFMPEG_COMMON_CONFIG_OPTIONS}
+     ${RV_FFMPEG_CONFIG_OPTIONS} ${RV_FFMPEG_EXTRA_C_OPTIONS} ${RV_FFMPEG_EXTRA_LIBPATH_OPTIONS} ${RV_FFMPEG_EXTERNAL_LIBS}
+   BUILD_COMMAND ${_make_command} -j${_cpu_count}
+   INSTALL_COMMAND ${_make_command} install
