@@ -123,6 +123,7 @@ jobs:
     name: Linux (Rocky 8)
     runs-on: ubuntu-latest
     continue-on-error: false
+    if: false # DISABLED
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -468,6 +469,8 @@ jobs:
           Remove-Item $bat, $envFile -ErrorAction SilentlyContinue
           if ($pathLine -match '^(?i:Path)=(.*)$') {
             $pathValue = $matches[1].Trim()
+            # Keep runner PATH (Python, Git, etc.) so later steps and MSBuild subprocesses see python3, meson, patch, sh
+            $pathValue = "$pathValue;$env:PATH"
             echo "PATH<<ENDOFPATH" >> $env:GITHUB_ENV
             echo "$pathValue" >> $env:GITHUB_ENV
             echo "ENDOFPATH" >> $env:GITHUB_ENV
@@ -486,17 +489,21 @@ jobs:
             Write-Host "Prepended VC bin (ml64) to PATH: $vcBin"
           }
 
-      # Prepend patch/MSYS2 to PATH so MSBuild subprocesses (e.g. RV_DEPS_IMGUI PATCH_COMMAND) find patch.exe
-      - name: Prepend patch and MSYS2 to PATH for MSBuild subprocesses
+      # Prepend patch/MSYS2/Python/cargo to PATH so MSBuild subprocesses find patch, sh, meson, python3
+      - name: Prepend patch, MSYS2, Python, and cargo to PATH for MSBuild subprocesses
         shell: pwsh
         run: |
-          $patchDirs = @(
+          $prependDirs = @(
             "C:\Program Files\Git\usr\bin",
             "C:\msys64\usr\bin",
             "C:\msys64\mingw64\bin"
           )
+          $py = (Get-Command python -ErrorAction SilentlyContinue).Source
+          if ($py) { $prependDirs += (Split-Path $py -Parent) }
+          $cargo = "$env:USERPROFILE\.cargo\bin"
+          if (Test-Path $cargo) { $prependDirs += $cargo }
           $existing = $env:PATH
-          $prepend = ($patchDirs | Where-Object { Test-Path $_ }) -join ';'
+          $prepend = ($prependDirs | Where-Object { $_ -and (Test-Path $_) }) -join ';'
           if ($prepend) {
             echo "PATH<<ENDOFPATH" >> $env:GITHUB_ENV
             echo "$prepend;$existing" >> $env:GITHUB_ENV
