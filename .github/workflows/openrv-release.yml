@@ -530,6 +530,10 @@ jobs:
           "NDI_ROOT=$ndiRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
         shell: pwsh
 
+      - name: Set Git SSL backend for clone (MSYS2 git uses OpenSSL)
+        shell: pwsh
+        run: git config --global http.sslBackend openssl
+
       - name: Build OpenRV (Windows) - Clone
         run: |
           .\ci\windows\build_windows.ps1 -Phase Clone `
