@@ -106,7 +106,7 @@ USER root
 RUN chmod +x /ci/detect_qt.sh /ci/build_in_container.sh
 USER rv
 
-RUN mkdir -p /home/rv/out
+RUN mkdir -p /home/rv/out /home/rv/OpenRV
 WORKDIR /home/rv
 
 ENTRYPOINT ["/ci/build_in_container.sh"]

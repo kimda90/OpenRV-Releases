@@ -34,6 +34,15 @@ echo "[1/6] Cloning OpenRV..."
 if [[ ! -d OpenRV/.git ]]; then
     # _build may be a Docker bind mount with cached artifacts - preserve it during clone
     if [[ -d OpenRV ]]; then
+        # If the OpenRV directory was implicitly created by Docker (due to a subdir bind mount),
+        # it may be owned by root and not writable by the 'rv' user. Fail loudly instead of
+        # silently continuing with a broken (non-git) checkout.
+        if [[ ! -w OpenRV ]]; then
+            echo "FATAL: ${WORKDIR}/OpenRV exists but is not writable."
+            echo "This commonly happens when mounting a volume to /home/rv/OpenRV/_build before /home/rv/OpenRV exists."
+            ls -ld OpenRV || true
+            exit 1
+        fi
         # Remove everything except _build
         find OpenRV -mindepth 1 -maxdepth 1 ! -name '_build' -exec rm -rf {} + 2>/dev/null || true
     else
@@ -43,11 +52,19 @@ if [[ ! -d OpenRV/.git ]]; then
     git clone --recursive "$OPENRV_REPO" OpenRV_tmp
     # Move all contents from temp to OpenRV (excluding _build if it happens to exist in temp)
     shopt -s dotglob
-    mv OpenRV_tmp/* OpenRV/ 2>/dev/null || true
+    # Move .git first so a failure is obvious (and to avoid ending up in a non-git directory).
+    mv OpenRV_tmp/.git OpenRV/.git
+    mv OpenRV_tmp/* OpenRV/
     shopt -u dotglob
     rm -rf OpenRV_tmp
 fi
 cd OpenRV
+if [[ ! -d .git ]]; then
+    echo "FATAL: OpenRV checkout is missing .git after clone/move. Cannot continue."
+    ls -ld . || true
+    ls -la . || true
+    exit 1
+fi
 git fetch --tags
 git checkout "refs/tags/${OPENRV_TAG}"
 git submodule update --init --recursive
