@@ -122,7 +122,6 @@ jobs:
     name: Linux (Rocky 8)
     runs-on: ubuntu-latest
     continue-on-error: false
-    if: false # DISABLED
     steps:
       - name: Checkout
         uses: actions/checkout@v4
