@@ -8,7 +8,7 @@ This repo contains **only** build and CI configuration and scripts for building 
 
 ## Key paths
 
-- **`ci/linux/`** – Linux builds: `Dockerfile.ubuntu22.04`, `Dockerfile.rocky9-cy2024` (extended image), `build_in_container.sh`, `detect_qt.sh`, `patches/dav1d_use_git.patch`, `patches/dav1d_use_git_oneline.patch`, `KNOWN_ISSUES.md`
+- **`ci/linux/`** – Linux builds: `Dockerfile.rocky8-extended`, `Dockerfile.ubuntu22.04`, `Dockerfile.rocky9-cy2024` (extended images only; vanilla from upstream), `build_in_container.sh`, `detect_qt.sh`, `patches/`, `KNOWN_ISSUES.md`
 - **`ci/windows/`** – Windows builds: `build_windows.ps1`, `package_windows.ps1`
 - **`.github/workflows/openrv-release.yml`** – Tag-triggered release workflow
 
@@ -21,6 +21,11 @@ This repo contains **only** build and CI configuration and scripts for building 
 - **GLEW on Linux**: We upgrade GLEW to **2.3.0** at build time by editing the cloned `cmake/dependencies/glew.cmake` (version string, URL hash, and library version). GLEW 2.3.0 fixes the duplicate variable definitions (Issue #449); no GLEW patches are applied.
 - **GC (bdwgc) on Linux**: bdwgc may install headers flat (`include/gc.h`) while OpenRV expects `include/gc/gc.h`. After `rvcfg`, the script builds the `dependencies` target, then if `OPENRV_FIX_GC_INCLUDE` is not `0` (default `1`), it creates `install/include/gc/` and copies `gc.h` and `gc_allocator.h` there when needed. Set **`OPENRV_FIX_GC_INCLUDE=0`** to skip this fix (e.g. if your bdwgc already installs the nested layout).
 - **Caching**: (1) The OpenRV clone is cached by **tag + commit SHA** (`openrv-rocky9-<tag>-<sha>`). (2) Docker layer cache: Buildx `scope=rocky9` for the vanilla image, `scope=rocky9-ext` for the extended image. (3) Build cache: `OpenRV/_build` is mounted from the host (`openrv-build-cache-rocky9` directory, created and `chmod 777` in the workflow before `docker run`) and restored/saved via `actions/cache/{restore,save}` with a **tag + SHA prefix**, so CMake ExternalProject stamps allow incremental resumes after failures.
+
+### Linux (Rocky 8)
+- **Two-step image build**: (1) Build the **vanilla** image from upstream `dockerfiles/Dockerfile.Linux-Rocky8` in the cloned repo (tag: `openrv-rocky8-base`). (2) Build the **extended** image from `ci/linux/Dockerfile.rocky8-extended`, which `FROM openrv-rocky8-base` and installs mesa-libGL-devel, libglvnd-devel, libdrm-devel, pkg-config. Upstream Dockerfile is never edited.
+- **VFX platform**: Rocky 8 job passes `RV_VFX_PLATFORM=CY2023`; `detect_qt.sh` supports CY2023 and finds Qt 5.15 in `~/Qt/5.15.2/gcc_64`. Artifact runs on Rocky 8 (and typically on Rocky 9) due to older glibc.
+- **Caching**: Buildx `scope=rocky8` for vanilla; build cache key `openrv-rocky8-build-<tag>-<sha>-...`.
 
 ### Linux (Ubuntu 22.04, experimental)
 - **Custom Dockerfile**: `ci/linux/Dockerfile.ubuntu22.04` is a translation of the upstream Rocky 9 Dockerfile with equivalent Ubuntu packages.
@@ -38,9 +43,9 @@ This repo contains **only** build and CI configuration and scripts for building 
 
 - **Shell scripts**: Bash-compatible; safe to `source` where noted (e.g. `detect_qt.sh`).
 - **Windows scripts**: PowerShell (`build_windows.ps1`, `package_windows.ps1`). Avoid nested interpreters.
-- **VFX platform**: CY2024. **Qt**: 6.5.3 (gcc_64 on Linux, msvc2019_64 on Windows).
+- **VFX platform**: CY2024 (Rocky 9, Ubuntu, Windows); CY2023 (Rocky 8). **Qt**: 6.5.x (CY2024), 5.15.x (CY2023); msvc2019_64 on Windows.
 - **Artifact names**: `OpenRV-${TAG}-<platform>-x86_64.<zip|tar.gz>`  
-  Examples: `OpenRV-v3.2.1-windows-x86_64.zip`, `OpenRV-v3.2.1-linux-rocky9-x86_64.tar.gz`, `OpenRV-v3.2.1-linux-ubuntu22.04-x86_64.tar.gz`.
+  Examples: `OpenRV-v3.2.1-windows-x86_64.zip`, `OpenRV-v3.2.1-linux-rocky9-x86_64.tar.gz`, `OpenRV-v3.2.1-linux-rocky8-x86_64.tar.gz`, `OpenRV-v3.2.1-linux-ubuntu22.04-x86_64.tar.gz`.
 - **Build output**: OpenRV's staged binary tree is `_build/stage/`; the `rv` executable is at `_build/stage/app/bin/rv` (Linux) or `_build/stage/app/bin/rv.exe` (Windows).
 
 ## Upstream build flow
@@ -52,6 +57,7 @@ This repo contains **only** build and CI configuration and scripts for building 
 ## Testing
 
 - **Local Linux (Rocky 9)**: Clone OpenRV, build vanilla image from upstream `dockerfiles/Dockerfile.Linux-Rocky9-CY2024` (tag e.g. `openrv-rocky9-base`), then build extended image from `ci/linux/Dockerfile.rocky9-cy2024`, run container with `build_in_container.sh` and `ci/linux` mounted at `/ci`, mount `/out` to collect artifacts.
+- **Local Linux (Rocky 8)**: Clone OpenRV, build vanilla image from `openrv-src/dockerfiles/Dockerfile.Linux-Rocky8` (tag `openrv-rocky8-base`), then extended from `ci/linux/Dockerfile.rocky8-extended` (tag `openrv-build-rocky8`). Run with `-e DISTRO_SUFFIX=linux-rocky8 -e RV_VFX_PLATFORM=CY2023` and same volume mounts as Rocky 9.
 - **Local Windows**: Install prerequisites (VS 2022, Python 3.11, CMake, Qt 6.5.3, Perl, Rust, MSYS2); run `build_windows.ps1` then `package_windows.ps1`.
 - **CI**: Push a tag matching `v*` (e.g. `v3.2.1`) to trigger the workflow; artifacts are published to the GitHub Release for that tag.
 
@@ -81,5 +87,6 @@ This repo contains **only** build and CI configuration and scripts for building 
 ## Support policy
 
 - **Rocky 9** artifact: supported.
+- **Rocky 8** artifact: supported (CY2023, runs on Rocky 8 and typically on Rocky 9).
 - **Windows** artifact: supported.
 - **Ubuntu 22.04** artifact: experimental; job uses `continue-on-error` and does not block releases.

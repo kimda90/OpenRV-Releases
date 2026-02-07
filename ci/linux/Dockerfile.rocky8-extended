@@ -1,0 +1,16 @@
+# Extended Rocky 8 image: vanilla upstream image + missing build deps (same as Rocky 9 extended).
+# Build order: 1) ci/linux/Dockerfile.rocky8 -> openrv-rocky8-base
+#              2) this file (FROM openrv-rocky8-base) -> openrv-build-rocky8
+# Adds: mesa-libGL-devel, libglvnd-devel, libdrm-devel, pkg-config for GLEW/configure.
+FROM openrv-rocky8-base
+
+USER root
+
+RUN dnf install -y \
+    mesa-libGL-devel \
+    libglvnd-devel \
+    libdrm-devel \
+    pkg-config \
+    && dnf clean all
+
+USER rv
