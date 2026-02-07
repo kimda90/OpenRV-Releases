@@ -57,53 +57,79 @@ function Write-BuildTail {
 # Setup: VS environment + PATH (run at start of script or of each phase when Phase != All)
 # ============================================================================
 function Initialize-BuildEnv {
-    # Find vcvarsall.bat
-    $vcvarsall = $null
-    $vsSearchPaths = @(
-        "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat",
-        "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat",
-        "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat",
-        "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat",
-        "C:\Program Files (x86)\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat",
-        "C:\Program Files (x86)\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat",
-        "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat"
-    )
-    foreach ($path in $vsSearchPaths) {
-        if (Test-Path $path) { $vcvarsall = $path; break }
-    }
-    if (-not $vcvarsall) {
-        throw "vcvarsall.bat not found. Please install Visual Studio 2022 with C++ workload."
-    }
+    # Check if VS environment is already initialized (cl.exe in PATH)
+    $clExeCheck = Get-Command cl.exe -ErrorAction SilentlyContinue
+    if ($clExeCheck) {
+        Write-Host "VS environment already initialized (cl.exe found in PATH). Skipping vcvarsall.bat." -ForegroundColor Green
+        $vsEnvAlreadySet = $true
+    } else {
+        Write-Host "Initializing VS environment via vcvarsall.bat..." -ForegroundColor Yellow
+        $vsEnvAlreadySet = $false
+        # Find vcvarsall.bat
+        $vcvarsall = $null
+        $vsSearchPaths = @(
+            "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat",
+            "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat",
+            "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat",
+            "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat",
+            "C:\Program Files (x86)\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat",
+            "C:\Program Files (x86)\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat",
+            "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat"
+        )
+        foreach ($path in $vsSearchPaths) {
+            if (Test-Path $path) { $vcvarsall = $path; break }
+        }
+        if (-not $vcvarsall) {
+            throw "vcvarsall.bat not found. Please install Visual Studio 2022 with C++ workload."
+        }
 
-    $tempBat = [System.IO.Path]::GetTempFileName() + ".bat"
-    $tempEnv = [System.IO.Path]::GetTempFileName()
-    @"
+        $tempBat = [System.IO.Path]::GetTempFileName() + ".bat"
+        $tempEnv = [System.IO.Path]::GetTempFileName()
+        @"
 @echo off
 call "$vcvarsall" x64
 set > "$tempEnv"
 "@ | Set-Content $tempBat -Encoding ASCII
 
-    cmd /c $tempBat 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "Failed to initialize VS environment" }
+        cmd /c $tempBat 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Failed to initialize VS environment" }
 
-    Get-Content $tempEnv | ForEach-Object {
-        if ($_ -match '^([^=]+)=(.*)$') {
-            $name = $matches[1]
-            $value = $matches[2]
-            [Environment]::SetEnvironmentVariable($name, $value, 'Process')
+        Get-Content $tempEnv | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$') {
+                $name = $matches[1]
+                $value = $matches[2]
+                [Environment]::SetEnvironmentVariable($name, $value, 'Process')
+            }
         }
+        Remove-Item $tempBat, $tempEnv -ErrorAction SilentlyContinue
     }
-    Remove-Item $tempBat, $tempEnv -ErrorAction SilentlyContinue
 
     # Derive VC x64 tools dir (cl, link, ml64) from vcvarsall path so MSBuild/FFmpeg subprocesses see them even if PATH parsing failed
-    $vcDir = Split-Path (Split-Path (Split-Path $vcvarsall -Parent) -Parent) -Parent  # VC folder
-    $msvcDir = Join-Path $vcDir "Tools\MSVC"
+    # When VS env is already set, find vcvarsall for the derivation
+    if ($vsEnvAlreadySet) {
+        $clExePath = (Get-Command cl.exe -ErrorAction SilentlyContinue).Source
+        if ($clExePath) {
+            # Derive vcvarsall from cl.exe path: e.g. ...\VC\Tools\MSVC\14.x.y\bin\Hostx64\x64\cl.exe -> ...\VC\Auxiliary\Build\vcvarsall.bat
+            $vcBin = Split-Path $clExePath -Parent
+            $hostDir = Split-Path $vcBin -Parent
+            $binDir = Split-Path $hostDir -Parent
+            $msvcVerDir = Split-Path $binDir -Parent
+            $msvcDir = Split-Path $msvcVerDir -Parent
+            $vcDir = Split-Path $msvcDir -Parent
+            $vcvarsall = Join-Path (Join-Path $vcDir "Auxiliary\Build") "vcvarsall.bat"
+            if (-not (Test-Path $vcvarsall)) { $vcvarsall = $null }
+        }
+    }
     $vcBinDerived = $null
-    if (Test-Path $msvcDir) {
-        $verDir = Get-ChildItem -Path $msvcDir -Directory | Sort-Object Name -Descending | Select-Object -First 1
-        if ($verDir) {
-            $vcBin = Join-Path $verDir.FullName "bin\Hostx64\x64"
-            if (Test-Path (Join-Path $vcBin "ml64.exe")) { $vcBinDerived = $vcBin }
+    if ($vcvarsall) {
+        $vcDir = Split-Path (Split-Path (Split-Path $vcvarsall -Parent) -Parent) -Parent  # VC folder
+        $msvcDir = Join-Path $vcDir "Tools\MSVC"
+        if (Test-Path $msvcDir) {
+            $verDir = Get-ChildItem -Path $msvcDir -Directory | Sort-Object Name -Descending | Select-Object -First 1
+            if ($verDir) {
+                $vcBin = Join-Path $verDir.FullName "bin\Hostx64\x64"
+                if (Test-Path (Join-Path $vcBin "ml64.exe")) { $vcBinDerived = $vcBin }
+            }
         }
     }
 

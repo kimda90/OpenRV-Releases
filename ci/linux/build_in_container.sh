@@ -36,18 +36,14 @@ if [[ ! -d OpenRV/.git ]]; then
     if [[ -d OpenRV ]]; then
         # Remove everything except _build
         find OpenRV -mindepth 1 -maxdepth 1 ! -name '_build' -exec rm -rf {} + 2>/dev/null || true
+    else
+        mkdir -p OpenRV
     fi
     # Clone into temp dir, then move contents into OpenRV (preserving _build mount)
     git clone --recursive "$OPENRV_REPO" OpenRV_tmp
-    mkdir -p OpenRV
-    # Move git repo and source files (use bash extglob to exclude _build if it exists in temp)
+    # Move all contents from temp to OpenRV (excluding _build if it happens to exist in temp)
     shopt -s dotglob
-    for item in OpenRV_tmp/*; do
-        [[ "$(basename "$item")" != "_build" ]] && mv "$item" OpenRV/ 2>/dev/null
-    done
-    for item in OpenRV_tmp/.*; do
-        [[ "$(basename "$item")" != "." && "$(basename "$item")" != ".." && "$(basename "$item")" != "_build" ]] && mv "$item" OpenRV/ 2>/dev/null || true
-    done
+    mv OpenRV_tmp/* OpenRV/ 2>/dev/null || true
     shopt -u dotglob
     rm -rf OpenRV_tmp
 fi
