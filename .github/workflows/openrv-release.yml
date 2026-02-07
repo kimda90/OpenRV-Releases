@@ -122,6 +122,7 @@ jobs:
     name: Linux (Ubuntu 22.04, experimental)
     runs-on: ubuntu-latest
     continue-on-error: false
+    if: false # DISABLED
     steps:
       - name: Checkout
         uses: actions/checkout@v4
