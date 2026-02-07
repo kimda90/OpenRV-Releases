@@ -146,12 +146,16 @@ set > "$tempEnv"
     $python3Exe = Join-Path $pythonDir 'python3.exe'
     if (-not (Test-Path $python3Exe)) { Copy-Item $pythonExe $python3Exe }
 
+    # Git usr\bin provides patch.exe for ExternalProject PATCH_COMMAND (e.g. RV_DEPS_IMGUI); MSBuild subprocesses may not see MSYS2 PATH.
+    $gitUsrBin = "C:\Program Files\Git\usr\bin"
+    if (-not (Test-Path (Join-Path $gitUsrBin "patch.exe"))) { $gitUsrBin = $null }
     $pathComponents = @(
         "C:\Program Files\CMake\bin",
         $pythonDir,
         "$env:USERPROFILE\.cargo\bin",
         "C:\msys64\mingw64\bin",
         "C:\msys64\usr\bin",
+        $gitUsrBin,
         $env:PATH,
         "C:\Strawberry\perl\bin"
     )
