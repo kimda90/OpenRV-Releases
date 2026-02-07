@@ -143,33 +143,51 @@ set > "$tempEnv"
     $pythonExe = (Get-Command python -ErrorAction SilentlyContinue).Source
     if (-not $pythonExe) { throw "Python not found in PATH" }
     $pythonDir = Split-Path $pythonExe
-    $python3Exe = Join-Path $pythonDir 'python3.exe'
-    if (-not (Test-Path $python3Exe)) { Copy-Item $pythonExe $python3Exe }
+    
+    # Create a writable bin directory for shims (e.g. python3)
+    $shimBinDir = Join-Path $WorkDir ".bin"
+    if (-not (Test-Path $shimBinDir)) { New-Item -ItemType Directory -Path $shimBinDir -Force | Out-Null }
+    $python3Exe = Join-Path $shimBinDir 'python3.exe'
+    if (-not (Test-Path $python3Exe)) {
+        Write-Host "Creating python3 shim in $shimBinDir" -ForegroundColor Yellow
+        Copy-Item $pythonExe $python3Exe
+    }
 
-    # Git usr\bin provides patch.exe for ExternalProject PATCH_COMMAND (e.g. RV_DEPS_IMGUI); MSBuild subprocesses may not see MSYS2 PATH.
+    # Detect MSYS2 and Git usr/bin
+    $msysRoot = if (Test-Path "C:\msys64") { "C:\msys64" } else { $null }
     $gitUsrBin = "C:\Program Files\Git\usr\bin"
     if (-not (Test-Path (Join-Path $gitUsrBin "patch.exe"))) { $gitUsrBin = $null }
+
+    # Build path components in order of priority
     $pathComponents = @(
+        $shimBinDir,
         "C:\Program Files\CMake\bin",
         $pythonDir,
         "$env:USERPROFILE\.cargo\bin",
-        "C:\msys64\mingw64\bin",
-        "C:\msys64\usr\bin",
+        (if ($msysRoot) { Join-Path $msysRoot "mingw64\bin" }),
+        (if ($msysRoot) { Join-Path $msysRoot "usr\bin" }),
         $gitUsrBin,
-        $env:PATH,
         "C:\Strawberry\perl\bin"
     )
-    $env:PATH = ($pathComponents | Where-Object { $_ }) -join ';'
 
-    # Prepend VC tools dir (cl, link, ml64) so MSBuild custom builds (e.g. Python _decimal vcdiv64.asm) and FFmpeg configure find them
-    if ($vcBinDerived) {
-        $env:PATH = "$vcBinDerived;$env:PATH"
-    }
+    # Prepend VC tools if derived
+    if ($vcBinDerived) { $pathComponents = @($vcBinDerived) + $pathComponents }
     $clExe = (Get-Command cl -ErrorAction SilentlyContinue).Source
     if ($clExe) {
         $vcBin = Split-Path $clExe -Parent
-        if ($vcBin -ne $vcBinDerived) { $env:PATH = "$vcBin;$env:PATH" }
+        if ($vcBin -ne $vcBinDerived) { $pathComponents = @($vcBin) + $pathComponents }
     }
+
+    # Add existing PATH and deduplicate to keep it under 8191 chars
+    $allPaths = $pathComponents + ($env:PATH -split ';')
+    $uniquePaths = @()
+    foreach ($p in $allPaths) {
+        if ($p -and (Test-Path $p) -and ($uniquePaths -notcontains $p)) {
+            $uniquePaths += $p
+        }
+    }
+    $env:PATH = $uniquePaths -join ';'
+    Write-Host "Deduplicated PATH length: $($env:PATH.Length)" -ForegroundColor Gray
 
     $env:WIN_PERL = "C:/Strawberry/perl/bin"
     $env:RV_DEPS_WIN_PERL_ROOT = "C:/Strawberry/perl/bin"

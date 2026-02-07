@@ -331,15 +331,6 @@ jobs:
           cache: 'pip'
           cache-dependency-path: openrv-src/requirements.txt
 
-      - name: Ensure python3.exe
-        run: |
-          $py = (Get-Command python -ErrorAction SilentlyContinue).Source
-          if ($py) {
-            $dir = Split-Path $py
-            $py3 = Join-Path $dir 'python3.exe'
-            if (-not (Test-Path $py3)) { Copy-Item $py $py3 }
-          }
-
       - name: Cache Qt
         id: cache-qt
         uses: actions/cache@v4
@@ -403,68 +394,6 @@ jobs:
 
       - name: Setup MSVC developer environment (cl, link, INCLUDE, LIB for Meson/deps)
         uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Export VS env to GITHUB_ENV (so all steps see cl, ml64 for FFmpeg/Python deps)
-        shell: pwsh
-        run: |
-          $vsPaths = @(
-            "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat",
-            "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat",
-            "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat",
-            "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat"
-          )
-          $vcvarsall = $null
-          foreach ($p in $vsPaths) { if (Test-Path $p) { $vcvarsall = $p; break } }
-          if (-not $vcvarsall) { Write-Host "vcvarsall not found, skipping PATH export"; exit 0 }
-          $bat = [System.IO.Path]::GetTempFileName() + ".bat"
-          $envFile = [System.IO.Path]::GetTempFileName()
-          "call `"$vcvarsall`" x64 && set > `"$envFile`"" | Set-Content $bat -Encoding ASCII
-          cmd /c $bat 2>&1 | Out-Null
-          $pathLine = Get-Content $envFile | Where-Object { $_ -match '^(?i:Path)=(.*)$' } | Select-Object -First 1
-          Remove-Item $bat, $envFile -ErrorAction SilentlyContinue
-          if ($pathLine -match '^(?i:Path)=(.*)$') {
-            $pathValue = $matches[1].Trim()
-            # Keep runner PATH (Python, Git, etc.) so later steps and MSBuild subprocesses see python3, meson, patch, sh
-            $pathValue = "$pathValue;$env:PATH"
-            echo "PATH<<ENDOFPATH" >> $env:GITHUB_ENV
-            echo "$pathValue" >> $env:GITHUB_ENV
-            echo "ENDOFPATH" >> $env:GITHUB_ENV
-          }
-
-      - name: Prepend VC tools (ml64) to PATH for MSBuild subprocesses
-        shell: pwsh
-        run: |
-          $clPath = (Get-Command cl.exe -ErrorAction SilentlyContinue).Source
-          if ($clPath) {
-            $vcBin = Split-Path $clPath -Parent
-            $currentPath = $env:PATH
-            echo "PATH<<ENDOFPATH" >> $env:GITHUB_ENV
-            echo "$vcBin;$currentPath" >> $env:GITHUB_ENV
-            echo "ENDOFPATH" >> $env:GITHUB_ENV
-            Write-Host "Prepended VC bin (ml64) to PATH: $vcBin"
-          }
-
-      # Prepend patch/MSYS2/Python/cargo to PATH so MSBuild subprocesses find patch, sh, meson, python3
-      - name: Prepend patch, MSYS2, Python, and cargo to PATH for MSBuild subprocesses
-        shell: pwsh
-        run: |
-          $prependDirs = @(
-            "C:\Program Files\Git\usr\bin",
-            "C:\msys64\usr\bin",
-            "C:\msys64\mingw64\bin"
-          )
-          $py = (Get-Command python -ErrorAction SilentlyContinue).Source
-          if ($py) { $prependDirs += (Split-Path $py -Parent) }
-          $cargo = "$env:USERPROFILE\.cargo\bin"
-          if (Test-Path $cargo) { $prependDirs += $cargo }
-          $existing = $env:PATH
-          $prepend = ($prependDirs | Where-Object { $_ -and (Test-Path $_) }) -join ';'
-          if ($prepend) {
-            echo "PATH<<ENDOFPATH" >> $env:GITHUB_ENV
-            echo "$prepend;$existing" >> $env:GITHUB_ENV
-            echo "ENDOFPATH" >> $env:GITHUB_ENV
-            Write-Host "Prepended to PATH for subsequent steps: $prepend"
-          }
 
       - name: Download optional SDKs
         id: sdks
