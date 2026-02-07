@@ -29,6 +29,26 @@ fi
 mkdir -p "$WORKDIR"
 cd "$WORKDIR"
 
+# Preserve mounted build cache if OpenRV repo is missing
+_build_cache_path=""
+if [[ -d OpenRV/_build ]]; then
+    _build_cache_path="${WORKDIR}/_build_cache"
+    mv OpenRV/_build "${_build_cache_path}"
+fi
+
+# Clone and checkout tag
+echo "[1/6] Cloning OpenRV..."
+if [[ ! -d OpenRV/.git ]]; then
+    rm -rf OpenRV
+    git clone --recursive "$OPENRV_REPO" OpenRV
+fi
+
+# Restore cached _build after clone
+if [[ -n "${_build_cache_path}" && -d "${_build_cache_path}" ]]; then
+    mkdir -p OpenRV
+    mv "${_build_cache_path}" OpenRV/_build
+fi
+
 # Fix ownership of mounted _build cache (may be owned by a different UID)
 if [[ -d OpenRV/_build && ! -w OpenRV/_build ]]; then
     echo "Fixing _build ownership..."
@@ -37,12 +57,6 @@ if [[ -d OpenRV/_build && ! -w OpenRV/_build ]]; then
     elif [[ "$(id -u)" = "0" ]]; then
         chown -R "$(id -u):$(id -g)" OpenRV/_build 2>/dev/null || true
     fi
-fi
-
-# Clone and checkout tag
-echo "[1/6] Cloning OpenRV..."
-if [[ ! -d OpenRV ]]; then
-    git clone --recursive "$OPENRV_REPO" OpenRV
 fi
 cd OpenRV
 git fetch --tags

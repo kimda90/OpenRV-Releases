@@ -340,7 +340,11 @@ Write-Host "OpenRV Windows Build" -ForegroundColor Cyan
 Write-Host "Tag: $Tag | Phase: $Phase | WorkDir: $WorkDir" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 
-Initialize-BuildEnv | Out-Null
+if ($Phase -ne 'Clone') {
+    Initialize-BuildEnv | Out-Null
+} else {
+    Write-Host "Skipping VS environment init for Clone phase." -ForegroundColor Yellow
+}
 
 if ($Phase -eq 'All') {
     Invoke-PhaseClone
