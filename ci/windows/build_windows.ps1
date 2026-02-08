@@ -154,7 +154,7 @@ set > "$tempEnv"
     }
 
     # Detect MSYS2 and Git usr/bin
-    $msysRoot = if (Test-Path "C:\msys64") { "C:\msys64" } else { $null }
+    $msysRoot = $(if (Test-Path "C:\msys64") { "C:\msys64" } else { $null })
     $gitUsrBin = "C:\Program Files\Git\usr\bin"
     if (-not (Test-Path (Join-Path $gitUsrBin "patch.exe"))) { $gitUsrBin = $null }
 
@@ -164,8 +164,8 @@ set > "$tempEnv"
         "C:\Program Files\CMake\bin",
         $pythonDir,
         "$env:USERPROFILE\.cargo\bin",
-        (if ($msysRoot) { Join-Path $msysRoot "mingw64\bin" }),
-        (if ($msysRoot) { Join-Path $msysRoot "usr\bin" }),
+        $(if ($msysRoot) { Join-Path $msysRoot "mingw64\bin" }),
+        $(if ($msysRoot) { Join-Path $msysRoot "usr\bin" }),
         $gitUsrBin,
         "C:\Strawberry\perl\bin"
     )
