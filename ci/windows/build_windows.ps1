@@ -153,6 +153,19 @@ set > "$tempEnv"
         Copy-Item $pythonExe $python3Exe
     }
 
+    # Create FFmpeg patch shim (robust PowerShell-based patching of third-party source during build)
+    $ffmpegPatchShim = Join-Path $shimBinDir "patch_ffmpeg.ps1"
+    @"
+`$content = Get-Content configure -Raw
+if (`$content -match 'cl_major_ver=') {
+    # Replace the dynamic version detection with a hardcoded modern version to avoid shell expansion / argument errors.
+    `$content = `$content -replace 'cl_major_ver=`\$\(cl.exe 2>&1 | sed -n .*', 'cl_major_ver=19'
+    Set-Content configure -Value `$content -NoNewline
+    Write-Host "FFmpeg configure: hardcoded cl_major_ver=19"
+}
+"@ | Set-Content $ffmpegPatchShim -Encoding ASCII
+    $env:FFMPEG_PATCH_SHIM = $ffmpegPatchShim
+
     # Detect MSYS2 and Git usr/bin
     $msysRoot = $(if (Test-Path "C:\msys64") { "C:\msys64" } else { $null })
     $gitUsrBin = "C:\Program Files\Git\usr\bin"
@@ -198,16 +211,10 @@ set > "$tempEnv"
     $env:RV_VFX_PLATFORM = "CY2024"
 
     # Force Meson and other subprocesses to use MSVC (avoid "icl" / Intel compiler detection)
-    $clExe = (Get-Command cl -ErrorAction SilentlyContinue).Source
-    if ($clExe) {
-        $env:CC = $clExe
-        $env:CXX = $clExe
-    } else {
-        $env:CC = "cl"
-        $env:CXX = "cl"
-    }
+    $env:CC = "cl"
+    $env:CXX = "cl"
 
-    return @{ QtHome = $qtHome; PythonDir = $pythonDir }
+    return @{ QtHome = $qtHome; PythonDir = $pythonDir; FfmpegPatchShim = $ffmpegPatchShim }
 }
 
 # ============================================================================
@@ -284,11 +291,27 @@ function Invoke-PhaseConfigure {
     $ffmpegCmake = Join-Path $WorkDir "cmake\dependencies\ffmpeg.cmake"
     if (Test-Path $ffmpegCmake) {
         $content = Get-Content $ffmpegCmake -Raw
-        # Ensure --toolchain=msvc appears right after configure command (FFmpeg requires it first; upstream only appends it later)
+        $modified = $false
+        # Fix 1: Insert --toolchain=msvc first (so it doesn't default to gcc/clang)
         if ($content -notmatch '\$\{_configure_command\} --toolchain=msvc --prefix=') {
             $content = $content -replace '\$\{_configure_command\} --prefix=', '$${_configure_command} --toolchain=msvc --prefix='
-            Set-Content $ffmpegCmake -Value $content -NoNewline
+            $modified = $true
             Write-Host "FFmpeg: added --toolchain=msvc before --prefix in CONFIGURE_COMMAND." -ForegroundColor Green
+        }
+        # Fix 2: Add our PowerShell patch shim to the PATCH_COMMAND step.
+        # Prepend it before any existing patch commands (RV_FFMPEG_PATCH_COMMAND_STEP may be empty or contain other commands).
+        if ($content -notmatch 'patch_ffmpeg.ps1') {
+            $shimPath = ($env:FFMPEG_PATCH_SHIM -replace '\\', '/')
+            Write-Host "FFmpeg patch shim path: $shimPath" -ForegroundColor Yellow
+            # Use COMMAND syntax to prepend our patch, then ${RV_FFMPEG_PATCH_COMMAND_STEP} if it exists.
+            # The regex targets: PATCH_COMMAND ${RV_FFMPEG_PATCH_COMMAND_STEP}
+            # Replacement: PATCH_COMMAND powershell ... COMMAND ${RV_FFMPEG_PATCH_COMMAND_STEP}
+            $content = $content -replace 'PATCH_COMMAND \$\{RV_FFMPEG_PATCH_COMMAND_STEP\}', "PATCH_COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File `"$shimPath`" COMMAND `$${RV_FFMPEG_PATCH_COMMAND_STEP}"
+            $modified = $true
+            Write-Host "FFmpeg: added PowerShell patch shim to PATCH_COMMAND." -ForegroundColor Green
+        }
+        if ($modified) {
+            Set-Content $ffmpegCmake -Value $content -NoNewline
         }
     }
     # atomic_ops uses autoconf; with CC=cl the "C compiler cannot create executables" test fails. Use gcc for this dep only.
@@ -416,7 +439,7 @@ Write-Host "Tag: $Tag | Phase: $Phase | WorkDir: $WorkDir" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 
 if ($Phase -notin @('Clone', 'Venv')) {
-    Initialize-BuildEnv | Out-Null
+    $envInfo = Initialize-BuildEnv
 } else {
     Write-Host "Skipping VS environment init for $Phase phase." -ForegroundColor Yellow
 }
