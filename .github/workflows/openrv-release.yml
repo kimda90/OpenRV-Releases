@@ -101,6 +101,7 @@ jobs:
     name: Linux (Rocky 8)
     runs-on: ubuntu-latest
     continue-on-error: false
+    if: false # DISABLED
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -424,16 +425,11 @@ jobs:
         shell: pwsh
 
       - name: Build OpenRV (Windows) - Clone
-        run: |
-          .\ci\windows\build_windows.ps1 -Phase Clone `
-            -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV" `
-            -BMDDeckLinkSdkZipPath "${{ env.BMD_PATH }}" -NDISdkRoot "${{ env.NDI_ROOT }}"
+        run: .\ci\windows\build_windows.ps1 -Phase Clone -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV" -BMDDeckLinkSdkZipPath "${{ env.BMD_PATH }}" -NDISdkRoot "${{ env.NDI_ROOT }}"
         shell: pwsh
 
       - name: Build OpenRV (Windows) - Python venv
-        run: |
-          .\ci\windows\build_windows.ps1 -Phase Venv `
-            -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
+        run: .\ci\windows\build_windows.ps1 -Phase Venv -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
         shell: pwsh
 
       - name: Restore OpenRV build cache (Windows)
@@ -445,28 +441,19 @@ jobs:
             openrv-windows-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-
 
       - name: Build OpenRV (Windows) - Configure
-        run: |
-          .\ci\windows\build_windows.ps1 -Phase Configure `
-            -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV" `
-            -BMDDeckLinkSdkZipPath "${{ env.BMD_PATH }}" -NDISdkRoot "${{ env.NDI_ROOT }}"
+        run: .\ci\windows\build_windows.ps1 -Phase Configure -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV" -BMDDeckLinkSdkZipPath "${{ env.BMD_PATH }}" -NDISdkRoot "${{ env.NDI_ROOT }}"
         shell: pwsh
 
       - name: Build OpenRV (Windows) - Dependencies
-        run: |
-          .\ci\windows\build_windows.ps1 -Phase BuildDependencies `
-            -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
+        run: .\ci\windows\build_windows.ps1 -Phase BuildDependencies -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
         shell: pwsh
 
       - name: Build OpenRV (Windows) - Main executable
-        run: |
-          .\ci\windows\build_windows.ps1 -Phase BuildMain `
-            -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
+        run: .\ci\windows\build_windows.ps1 -Phase BuildMain -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
         shell: pwsh
 
       - name: Build OpenRV (Windows) - Verify
-        run: |
-          .\ci\windows\build_windows.ps1 -Phase Verify `
-            -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
+        run: .\ci\windows\build_windows.ps1 -Phase Verify -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
         shell: pwsh
 
       - name: Save OpenRV build cache (Windows)
@@ -477,8 +464,7 @@ jobs:
           key: openrv-windows-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-${{ github.run_id }}
 
       - name: Package OpenRV (Windows)
-        run: |
-          .\ci\windows\package_windows.ps1 -OpenRVRoot "C:\OpenRV" -Tag '${{ env.OPENRV_TAG }}' -OutDir dist
+        run: .\ci\windows\package_windows.ps1 -OpenRVRoot "C:\OpenRV" -Tag "${{ env.OPENRV_TAG }}" -OutDir dist
         shell: pwsh
 
       - name: Upload Windows artifact
