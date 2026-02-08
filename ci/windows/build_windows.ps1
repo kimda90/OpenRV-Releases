@@ -306,7 +306,9 @@ function Invoke-PhaseConfigure {
             # Use COMMAND syntax to prepend our patch, then ${RV_FFMPEG_PATCH_COMMAND_STEP} if it exists.
             # The regex targets: PATCH_COMMAND ${RV_FFMPEG_PATCH_COMMAND_STEP}
             # Replacement: PATCH_COMMAND powershell ... COMMAND ${RV_FFMPEG_PATCH_COMMAND_STEP}
-            $content = $content -replace 'PATCH_COMMAND \$\{RV_FFMPEG_PATCH_COMMAND_STEP\}', "PATCH_COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File `"$shimPath`" COMMAND `$${RV_FFMPEG_PATCH_COMMAND_STEP}"
+            # Use string concatenation to avoid PowerShell variable expansion
+            $replacement = 'PATCH_COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "' + $shimPath + '" COMMAND $${RV_FFMPEG_PATCH_COMMAND_STEP}'
+            $content = $content -replace 'PATCH_COMMAND \$\{RV_FFMPEG_PATCH_COMMAND_STEP\}', $replacement
             $modified = $true
             Write-Host "FFmpeg: added PowerShell patch shim to PATCH_COMMAND." -ForegroundColor Green
         }
