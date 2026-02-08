@@ -425,12 +425,12 @@ jobs:
         shell: pwsh
 
       - name: Build OpenRV (Windows) - Clone
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File ci/windows/build_windows.ps1 -Phase Clone -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV" -BMDDeckLinkSdkZipPath "${{ env.BMD_PATH }}" -NDISdkRoot "${{ env.NDI_ROOT }}"
-        shell: bash
+        run: .\ci\windows\build_windows.ps1 -Phase Clone -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV" -BMDDeckLinkSdkZipPath "${{ env.BMD_PATH }}" -NDISdkRoot "${{ env.NDI_ROOT }}"
+        shell: pwsh
 
       - name: Build OpenRV (Windows) - Python venv
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File ci/windows/build_windows.ps1 -Phase Venv -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
-        shell: bash
+        run: .\ci\windows\build_windows.ps1 -Phase Venv -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
+        shell: pwsh
 
       - name: Restore OpenRV build cache (Windows)
         uses: actions/cache/restore@v4
@@ -441,20 +441,20 @@ jobs:
             openrv-windows-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-
 
       - name: Build OpenRV (Windows) - Configure
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File ci/windows/build_windows.ps1 -Phase Configure -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV" -BMDDeckLinkSdkZipPath "${{ env.BMD_PATH }}" -NDISdkRoot "${{ env.NDI_ROOT }}"
-        shell: bash
+        run: .\ci\windows\build_windows.ps1 -Phase Configure -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV" -BMDDeckLinkSdkZipPath "${{ env.BMD_PATH }}" -NDISdkRoot "${{ env.NDI_ROOT }}"
+        shell: pwsh
 
       - name: Build OpenRV (Windows) - Dependencies
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File ci/windows/build_windows.ps1 -Phase BuildDependencies -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
-        shell: bash
+        run: .\ci\windows\build_windows.ps1 -Phase BuildDependencies -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
+        shell: pwsh
 
       - name: Build OpenRV (Windows) - Main executable
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File ci/windows/build_windows.ps1 -Phase BuildMain -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
-        shell: bash
+        run: .\ci\windows\build_windows.ps1 -Phase BuildMain -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
+        shell: pwsh
 
       - name: Build OpenRV (Windows) - Verify
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File ci/windows/build_windows.ps1 -Phase Verify -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
-        shell: bash
+        run: .\ci\windows\build_windows.ps1 -Phase Verify -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
+        shell: pwsh
 
       - name: Save OpenRV build cache (Windows)
         if: always() && hashFiles('C:\OpenRV\_build\CMakeCache.txt') != ''
@@ -464,8 +464,8 @@ jobs:
           key: openrv-windows-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-${{ github.run_id }}
 
       - name: Package OpenRV (Windows)
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File ci/windows/package_windows.ps1 -OpenRVRoot "C:\OpenRV" -Tag "${{ env.OPENRV_TAG }}" -OutDir dist
-        shell: bash
+        run: .\ci\windows\package_windows.ps1 -OpenRVRoot "C:\OpenRV" -Tag "${{ env.OPENRV_TAG }}" -OutDir dist
+        shell: pwsh
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
