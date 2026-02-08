@@ -155,30 +155,43 @@ set > "$tempEnv"
 
     # Create FFmpeg patch shim (robust PowerShell-based patching of third-party source during build)
     $ffmpegPatchShim = Join-Path $shimBinDir "patch_ffmpeg.ps1"
-    @"
-`$content = Get-Content configure -Raw
-if (`$content -match 'cl_major_ver=') {
-    # Replace the dynamic version detection with a hardcoded modern version to avoid shell expansion / argument errors.
-    `$content = `$content -replace 'cl_major_ver=`\$\(cl.exe 2>&1 | sed -n .*', 'cl_major_ver=19'
-    Set-Content configure -Value `$content -NoNewline
-    Write-Host "FFmpeg configure: hardcoded cl_major_ver=19"
+    $shimContent = @'
+$content = [System.IO.File]::ReadAllText("configure")
+if ($content -match 'cl_major_ver=') {
+    # Replace the dynamic version detection with a hardcoded modern version.
+    # We use escaping for the regex special characters.
+    $regex = 'cl_major_ver=\$\(cl\.exe 2>&1 \| sed -n .*?\)'
+    $content = [System.Text.RegularExpressions.Regex]::Replace($content, $regex, 'cl_major_ver=19')
+    
+    # Ensure LF line endings for POSIX shell compatibility
+    $content = $content.Replace("`r`n", "`n")
+    
+    # Save as UTF-8 without BOM
+    $utf8NoBOM = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText("configure", $content, $utf8NoBOM)
+    Write-Host "FFmpeg configure: hardcoded cl_major_ver=19 (normalized to LF)"
 }
-"@ | Set-Content $ffmpegPatchShim -Encoding ASCII
+'@
+    $shimContent | Set-Content $ffmpegPatchShim -Encoding ASCII
     $env:FFMPEG_PATCH_SHIM = $ffmpegPatchShim
 
     # Detect MSYS2 and Git usr/bin
     $msysRoot = $(if (Test-Path "C:\msys64") { "C:\msys64" } else { $null })
+    $msysBin = $(if ($msysRoot) { Join-Path $msysRoot "usr\bin" })
+    $shExe = $(if ($msysBin) { Join-Path $msysBin "sh.exe" })
+    if (-not (Test-Path $shExe)) { $shExe = $(Get-Command sh.exe -ErrorAction SilentlyContinue).Source }
+
     $gitUsrBin = "C:\Program Files\Git\usr\bin"
     if (-not (Test-Path (Join-Path $gitUsrBin "patch.exe"))) { $gitUsrBin = $null }
 
-    # Build path components in order of priority
+    # Build path components in order of priority (MSYS2 MUST be ahead of Git's sh.exe)
     $pathComponents = @(
         $shimBinDir,
         "C:\Program Files\CMake\bin",
         $pythonDir,
         "$env:USERPROFILE\.cargo\bin",
         $(if ($msysRoot) { Join-Path $msysRoot "mingw64\bin" }),
-        $(if ($msysRoot) { Join-Path $msysRoot "usr\bin" }),
+        $msysBin,
         $gitUsrBin,
         "C:\Strawberry\perl\bin"
     )
@@ -191,13 +204,19 @@ if (`$content -match 'cl_major_ver=') {
         if ($vcBin -ne $vcBinDerived) { $pathComponents = @($vcBin) + $pathComponents }
     }
 
-    # Add existing PATH (filtered to remove Strawberry Perl sh.exe conflicts) and deduplicate to keep it under 8191 chars
+    # Add existing PATH (filtered to remove conflicting shells and Strawberry Perl tools)
     $existingPath = $env:PATH -split ';'
-    $cleanPath = $existingPath | Where-Object { $_ -notmatch 'Strawberry' }
+    $cleanPath = $existingPath | Where-Object { 
+        $_ -and (Test-Path $_) -and
+        $_ -notmatch 'Strawberry' -and 
+        $_ -notmatch 'Git\\bin' -and   # Filter out Git\bin (sh.exe) but keep usr\bin (patch.exe)
+        $_ -notmatch 'Git\\cmd'        # Filter out Git\cmd to avoid further confusion
+    }
+    
     $allPaths = $pathComponents + $cleanPath
     $uniquePaths = @()
     foreach ($p in $allPaths) {
-        if ($p -and (Test-Path $p) -and ($uniquePaths -notcontains $p)) {
+        if ($p -and ($uniquePaths -notcontains $p)) {
             $uniquePaths += $p
         }
     }
@@ -216,7 +235,7 @@ if (`$content -match 'cl_major_ver=') {
     $env:CC = "cl"
     $env:CXX = "cl"
 
-    return @{ QtHome = $qtHome; PythonDir = $pythonDir; FfmpegPatchShim = $ffmpegPatchShim }
+    return @{ QtHome = $qtHome; PythonDir = $pythonDir; FfmpegPatchShim = $ffmpegPatchShim; ShExe = $shExe }
 }
 
 # ============================================================================
@@ -301,14 +320,8 @@ function Invoke-PhaseConfigure {
             Write-Host "FFmpeg: added --toolchain=msvc before --prefix in CONFIGURE_COMMAND." -ForegroundColor Green
         }
         # Fix 2: Add our PowerShell patch shim to the PATCH_COMMAND step.
-        # Prepend it before any existing patch commands (RV_FFMPEG_PATCH_COMMAND_STEP may be empty or contain other commands).
         if ($content -notmatch 'patch_ffmpeg.ps1') {
             $shimPath = ($env:FFMPEG_PATCH_SHIM -replace '\\', '/')
-            Write-Host "FFmpeg patch shim path: $shimPath" -ForegroundColor Yellow
-            # Use COMMAND syntax to prepend our patch, then ${RV_FFMPEG_PATCH_COMMAND_STEP} if it exists.
-            # The regex targets: PATCH_COMMAND ${RV_FFMPEG_PATCH_COMMAND_STEP}
-            # Replacement: PATCH_COMMAND powershell ... COMMAND ${RV_FFMPEG_PATCH_COMMAND_STEP}
-            # Use string concatenation to avoid PowerShell variable expansion
             $replacement = 'PATCH_COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "' + $shimPath + '" COMMAND $${RV_FFMPEG_PATCH_COMMAND_STEP}'
             $content = $content -replace 'PATCH_COMMAND \$\{RV_FFMPEG_PATCH_COMMAND_STEP\}', $replacement
             $modified = $true
@@ -319,7 +332,6 @@ function Invoke-PhaseConfigure {
         }
     }
     # atomic_ops uses autoconf; with CC=cl the "C compiler cannot create executables" test fails. Use gcc for this dep only.
-    # Must apply environment to both autogen and configure commands (&& starts a new command in most shells).
     $atomicOpsCmake = Join-Path $WorkDir "cmake\dependencies\atomic_ops.cmake"
     if (Test-Path $atomicOpsCmake) {
         $content = Get-Content $atomicOpsCmake -Raw
@@ -340,9 +352,9 @@ function Invoke-PhaseConfigure {
     }
 
     $qtHome = $env:QT_HOME
-    if (-not $qtHome) { $qtHome = "C:\Qt\6.5.3\msvc2019_64" }
     $qtHomeCmake = $qtHome -replace '\\', '/'
     $winPerlCmake = "C:/Strawberry/perl/bin"
+    $shExeCmake = $envInfo.ShExe -replace '\\', '/'
 
     $cmakeArgs = @(
         "-B", $buildDir,
@@ -352,7 +364,8 @@ function Invoke-PhaseConfigure {
         "-DCMAKE_BUILD_TYPE=Release",
         "-DRV_DEPS_QT6_LOCATION=$qtHomeCmake",
         "-DRV_VFX_PLATFORM=CY2024",
-        "-DRV_DEPS_WIN_PERL_ROOT=$winPerlCmake"
+        "-DRV_DEPS_WIN_PERL_ROOT=$winPerlCmake",
+        "-DSH_EXECUTABLE=$shExeCmake"
     ) + $cmakeExtraArgs
 
     Push-Location $WorkDir
