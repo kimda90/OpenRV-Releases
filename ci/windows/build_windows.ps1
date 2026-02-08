@@ -191,8 +191,10 @@ if (`$content -match 'cl_major_ver=') {
         if ($vcBin -ne $vcBinDerived) { $pathComponents = @($vcBin) + $pathComponents }
     }
 
-    # Add existing PATH and deduplicate to keep it under 8191 chars
-    $allPaths = $pathComponents + ($env:PATH -split ';')
+    # Add existing PATH (filtered to remove Strawberry Perl sh.exe conflicts) and deduplicate to keep it under 8191 chars
+    $existingPath = $env:PATH -split ';'
+    $cleanPath = $existingPath | Where-Object { $_ -notmatch 'Strawberry' }
+    $allPaths = $pathComponents + $cleanPath
     $uniquePaths = @()
     foreach ($p in $allPaths) {
         if ($p -and (Test-Path $p) -and ($uniquePaths -notcontains $p)) {
