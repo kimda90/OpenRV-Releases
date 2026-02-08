@@ -198,8 +198,14 @@ set > "$tempEnv"
     $env:RV_VFX_PLATFORM = "CY2024"
 
     # Force Meson and other subprocesses to use MSVC (avoid "icl" / Intel compiler detection)
-    $env:CC = "cl"
-    $env:CXX = "cl"
+    $clExe = (Get-Command cl -ErrorAction SilentlyContinue).Source
+    if ($clExe) {
+        $env:CC = $clExe
+        $env:CXX = $clExe
+    } else {
+        $env:CC = "cl"
+        $env:CXX = "cl"
+    }
 
     return @{ QtHome = $qtHome; PythonDir = $pythonDir }
 }
@@ -286,13 +292,14 @@ function Invoke-PhaseConfigure {
         }
     }
     # atomic_ops uses autoconf; with CC=cl the "C compiler cannot create executables" test fails. Use gcc for this dep only.
+    # Must apply environment to both autogen and configure commands (&& starts a new command in most shells).
     $atomicOpsCmake = Join-Path $WorkDir "cmake\dependencies\atomic_ops.cmake"
     if (Test-Path $atomicOpsCmake) {
         $content = Get-Content $atomicOpsCmake -Raw
-        if ($content -notmatch 'CC=gcc CXX=g\+\+ \$\{_autogen_command\}') {
-            $content = $content -replace 'CONFIGURE_COMMAND \$\{_autogen_command\} &&', 'CONFIGURE_COMMAND $${CMAKE_COMMAND} -E env CC=gcc CXX=g++ $${_autogen_command} &&'
+        if ($content -notmatch 'CC=gcc CXX=g\+\+ \$\{_configure_command\}') {
+            $content = $content -replace 'CONFIGURE_COMMAND \$\{_autogen_command\} && \$\{_configure_command\} \$\{_configure_args\}', 'CONFIGURE_COMMAND $${CMAKE_COMMAND} -E env CC=gcc CXX=g++ $${_autogen_command} && $${CMAKE_COMMAND} -E env CC=gcc CXX=g++ $${_configure_command} $${_configure_args}'
             Set-Content $atomicOpsCmake -Value $content -NoNewline
-            Write-Host "atomic_ops: CONFIGURE_COMMAND now uses gcc so autoconf compiler test succeeds." -ForegroundColor Green
+            Write-Host "atomic_ops: CONFIGURE_COMMAND now uses gcc for both autogen and configure." -ForegroundColor Green
         }
     }
 
