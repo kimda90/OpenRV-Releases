@@ -265,32 +265,34 @@ function Invoke-PhaseConfigure {
     Write-Host "[Phase: Configure] CMake configure" -ForegroundColor Cyan
     if (-not (Test-Path $WorkDir)) { throw "WorkDir $WorkDir not found. Run Clone and Venv first." }
 
-    # Apply Windows build patches to cloned OpenRV (we do not modify upstream; patch only the clone at build time)
-    $patchDir = Join-Path $PSScriptRoot "patches"
-    $dav1dPatch = Join-Path $patchDir "dav1d_windows_meson.patch"
-    if (Test-Path $dav1dPatch) {
-        Write-Host "Applying DAV1D Windows Meson patch..." -ForegroundColor Yellow
-        Push-Location $WorkDir
-        try {
-            & git apply --ignore-whitespace $dav1dPatch 2>&1
-            if ($LASTEXITCODE -ne 0) {
-                Write-Host "Warning: DAV1D patch could not be applied (maybe already applied or OpenRV version changed). Continuing." -ForegroundColor Yellow
-            }
-        } finally {
-            Pop-Location
+    # Apply Windows build tweaks via search/replace (robust across OpenRV versions; no git apply / patch context)
+    $dav1dCmake = Join-Path $WorkDir "cmake\dependencies\dav1d.cmake"
+    if (Test-Path $dav1dCmake) {
+        $content = Get-Content $dav1dCmake -Raw
+        if ($content -notmatch '-Denable_asm=false') {
+            $content = $content -replace '-Denable_tools=false', '-Denable_tools=false -Denable_asm=false'
+            Set-Content $dav1dCmake -Value $content -NoNewline
+            Write-Host "DAV1D: added -Denable_asm=false to CONFIGURE_COMMAND." -ForegroundColor Green
         }
     }
-    $ffmpegPatch = Join-Path $patchDir "ffmpeg_configure_msvc_first.patch"
-    if (Test-Path $ffmpegPatch) {
-        Write-Host "Applying FFmpeg configure (--toolchain=msvc first) patch..." -ForegroundColor Yellow
-        Push-Location $WorkDir
-        try {
-            & git apply --ignore-whitespace $ffmpegPatch 2>&1
-            if ($LASTEXITCODE -ne 0) {
-                Write-Host "Warning: FFmpeg patch could not be applied (maybe already applied or OpenRV version changed). Continuing." -ForegroundColor Yellow
-            }
-        } finally {
-            Pop-Location
+    $ffmpegCmake = Join-Path $WorkDir "cmake\dependencies\ffmpeg.cmake"
+    if (Test-Path $ffmpegCmake) {
+        $content = Get-Content $ffmpegCmake -Raw
+        # Ensure --toolchain=msvc appears right after configure command (FFmpeg requires it first; upstream only appends it later)
+        if ($content -notmatch '\$\{_configure_command\} --toolchain=msvc --prefix=') {
+            $content = $content -replace '\$\{_configure_command\} --prefix=', '$${_configure_command} --toolchain=msvc --prefix='
+            Set-Content $ffmpegCmake -Value $content -NoNewline
+            Write-Host "FFmpeg: added --toolchain=msvc before --prefix in CONFIGURE_COMMAND." -ForegroundColor Green
+        }
+    }
+    # atomic_ops uses autoconf; with CC=cl the "C compiler cannot create executables" test fails. Use gcc for this dep only.
+    $atomicOpsCmake = Join-Path $WorkDir "cmake\dependencies\atomic_ops.cmake"
+    if (Test-Path $atomicOpsCmake) {
+        $content = Get-Content $atomicOpsCmake -Raw
+        if ($content -notmatch 'CC=gcc CXX=g\+\+ \$\{_autogen_command\}') {
+            $content = $content -replace 'CONFIGURE_COMMAND \$\{_autogen_command\} &&', 'CONFIGURE_COMMAND $${CMAKE_COMMAND} -E env CC=gcc CXX=g++ $${_autogen_command} &&'
+            Set-Content $atomicOpsCmake -Value $content -NoNewline
+            Write-Host "atomic_ops: CONFIGURE_COMMAND now uses gcc so autoconf compiler test succeeds." -ForegroundColor Green
         }
     }
 
