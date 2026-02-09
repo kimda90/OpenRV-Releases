@@ -327,6 +327,17 @@ function Invoke-PhaseConfigure {
             $modified = $true
             Write-Host "FFmpeg: added PowerShell patch shim to PATCH_COMMAND." -ForegroundColor Green
         }
+        # Fix 3: Prepend MSYS2 to PATH for FFmpeg's CONFIGURE_COMMAND
+        # The default 'sh ./configure' picks up an incompatible shell on Windows that doesn't
+        # understand POSIX case patterns like [TD]*, causing syntax errors.
+        # CMAKE_PROGRAM_PATH only affects find_program(), not runtime command execution.
+        if ($content -notmatch 'CMAKE_COMMAND.*-E env.*PATH=.*msys64') {
+            $msys64Path = "C:/msys64/usr/bin"
+            # Wrap _configure_command with PATH prepend
+            $content = $content -replace '(\$\{_configure_command\})', '$${CMAKE_COMMAND} -E env "PATH=' + $msys64Path + ';`$ENV{PATH}" $1'
+            $modified = $true
+            Write-Host "FFmpeg: prepended MSYS2 to PATH in CONFIGURE_COMMAND." -ForegroundColor Green
+        }
         if ($modified) {
             Set-Content $ffmpegCmake -Value $content -NoNewline
         }
@@ -356,12 +367,19 @@ function Invoke-PhaseConfigure {
     $winPerlCmake = "C:/Strawberry/perl/bin"
     $shExeCmake = $envInfo.ShExe -replace '\\', '/'
 
+    # Build CMAKE_PROGRAM_PATH to ensure MSYS2 tools are found first (for sh, sed, awk, etc.)
+    # This is cleaner than patching individual cmake files.
+    $msys64UsrBin = "C:/msys64/usr/bin"
+    $msys64Mingw64Bin = "C:/msys64/mingw64/bin"
+    $cmakeProgramPath = "$msys64UsrBin;$msys64Mingw64Bin"
+
     $cmakeArgs = @(
         "-B", $buildDir,
         "-G", "Visual Studio 17 2022",
         "-T", "v143",
         "-A", "x64",
         "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_PROGRAM_PATH=$cmakeProgramPath",
         "-DRV_DEPS_QT6_LOCATION=$qtHomeCmake",
         "-DRV_VFX_PLATFORM=CY2024",
         "-DRV_DEPS_WIN_PERL_ROOT=$winPerlCmake",
