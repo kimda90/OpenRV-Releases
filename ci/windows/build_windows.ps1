@@ -333,11 +333,13 @@ function Invoke-PhaseConfigure {
         # CMAKE_PROGRAM_PATH only affects find_program(), not runtime command execution.
         if ($content -notmatch 'CMAKE_COMMAND.*-E env.*PATH=.*msys64') {
             $msys64Path = "C:/msys64/usr/bin"
-            # Build replacement string separately to avoid -replace parsing issues
-            $replaceWith = '"$${CMAKE_COMMAND}" -E env "PATH=' + $msys64Path + ';$$ENV{PATH}" $${_configure_command}'
-            $content = $content -replace '\$\{_configure_command\}', $replaceWith
+            $msysSh = "$msys64Path/sh"
+            # Quote CMAKE_COMMAND and specify absolute path for sh while prepending PATH for tools
+            $content = $content -replace '(\s+)\$\{CMAKE_COMMAND\} -E env', '$1"$${CMAKE_COMMAND}" -E env'
+            $replaceWith = '"PATH=' + $msys64Path + ';$$ENV{PATH}" ' + $msysSh + ' ./configure'
+            $content = $content -replace 'sh ./configure', $replaceWith
             $modified = $true
-            Write-Host "FFmpeg: prepended MSYS2 to PATH in CONFIGURE_COMMAND." -ForegroundColor Green
+            Write-Host "FFmpeg: hardcoded MSYS2 sh and prepended PATH." -ForegroundColor Green
         }
         if ($modified) {
             Set-Content $ffmpegCmake -Value $content -NoNewline
