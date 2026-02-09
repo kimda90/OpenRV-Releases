@@ -156,23 +156,28 @@ set > "$tempEnv"
     # Create FFmpeg patch shim (robust PowerShell-based patching of third-party source during build)
     $ffmpegPatchShim = Join-Path $shimBinDir "patch_ffmpeg.ps1"
     $shimContent = @'
-$content = [System.IO.File]::ReadAllText("configure")
-if ($content -match 'cl_major_ver=') {
-    # Replace the dynamic version detection with a hardcoded modern version.
-    # We use escaping for the regex special characters.
-    $regex = 'cl_major_ver=\$\(cl\.exe 2>&1 \| sed -n .*?\)'
-    $content = [System.Text.RegularExpressions.Regex]::Replace($content, $regex, 'cl_major_ver=19')
+if (Test-Path "configure") {
+    $content = [System.IO.File]::ReadAllText((Resolve-Path "configure").Path)
     
-    # Ensure LF line endings for POSIX shell compatibility
-    $content = $content.Replace("`r`n", "`n")
+    # 1. Hardcode cl_major_ver if found (fixes MSVC detection)
+    # The regex is now more flexible to handle variations in the configure script
+    if ($content -match 'cl_major_ver=') {
+        $regex = 'cl_major_ver=\$\(cl\.exe 2>&1 \| sed -n .*?\)'
+        $content = [System.Text.RegularExpressions.Regex]::Replace($content, $regex, 'cl_major_ver=19')
+        Write-Host "FFmpeg patch: hardcoded cl_major_ver=19"
+    }
     
-    # Save as UTF-8 without BOM
+    # 2. MANDATORY: Force LF line endings for POSIX shell compatibility on Windows
+    # This fixes the "syntax error near unexpected token ')'" error
+    $content = $content -replace "`r`n", "`n"
+    
+    # 3. Save as UTF-8 without BOM
     $utf8NoBOM = New-Object System.Text.UTF8Encoding $false
-    [System.IO.File]::WriteAllText("configure", $content, $utf8NoBOM)
-    Write-Host "FFmpeg configure: hardcoded cl_major_ver=19 (normalized to LF)"
+    [System.IO.File]::WriteAllText((Resolve-Path "configure").Path, $content, $utf8NoBOM)
+    Write-Host "FFmpeg patch: normalized configure to LF line endings"
 }
 '@
-    $shimContent | Set-Content $ffmpegPatchShim -Encoding ASCII
+    $shimContent | Set-Content $ffmpegPatchShim -Encoding UTF8
     $env:FFMPEG_PATCH_SHIM = $ffmpegPatchShim
 
     # Detect all potential MSYS2 installations
