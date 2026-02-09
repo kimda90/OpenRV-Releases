@@ -176,7 +176,7 @@ if ($content -match 'cl_major_ver=') {
     $env:FFMPEG_PATCH_SHIM = $ffmpegPatchShim
 
     # Detect MSYS2 and Git usr/bin
-    $msysRoot = $(if (Test-Path "C:\msys64") { "C:\msys64" } else { $null })
+    $msysRoot = $(if (Test-Path "C:\tools\msys64") { "C:\tools\msys64" } elseif (Test-Path "C:\msys64") { "C:\msys64" } else { $null })
     $msysBin = $(if ($msysRoot) { Join-Path $msysRoot "usr\bin" })
     $shExe = $(if ($msysBin) { Join-Path $msysBin "sh.exe" })
     if (-not (Test-Path $shExe)) { $shExe = $(Get-Command sh.exe -ErrorAction SilentlyContinue).Source }
@@ -235,7 +235,7 @@ if ($content -match 'cl_major_ver=') {
     $env:CC = "cl"
     $env:CXX = "cl"
 
-    return @{ QtHome = $qtHome; PythonDir = $pythonDir; FfmpegPatchShim = $ffmpegPatchShim; ShExe = $shExe }
+    return @{ QtHome = $qtHome; PythonDir = $pythonDir; FfmpegPatchShim = $ffmpegPatchShim; ShExe = $shExe; MsysBin = $msysBin }
 }
 
 # ============================================================================
@@ -331,15 +331,25 @@ function Invoke-PhaseConfigure {
         # The default 'sh ./configure' picks up an incompatible shell on Windows that doesn't
         # understand POSIX case patterns like [TD]*, causing syntax errors.
         # CMAKE_PROGRAM_PATH only affects find_program(), not runtime command execution.
-        if ($content -notmatch 'CMAKE_COMMAND.*-E env.*PATH=.*msys64') {
-            $msys64Path = "C:/msys64/usr/bin"
-            $msysSh = "$msys64Path/sh"
-            # Quote CMAKE_COMMAND and specify absolute path for sh while prepending PATH for tools
+        if ($content -notmatch 'CMAKE_COMMAND.*-E env.*PATH=.*msys') {
+            # Use detected MSYS2 bin dir or fallback
+            $msysBinDir = $envInfo.MsysBin -replace '\\', '/'
+            if (-not $msysBinDir) { throw "MSYS2 bin directory not found. Please ensure MSYS2 is installed in C:\tools\msys64 or C:\msys64." }
+            
+            $msysBash = "$msysBinDir/bash.exe"
+            if (-not (Test-Path $msysBash)) { $msysBash = "$msysBinDir/sh.exe" }
+
+            # Quote CMAKE_COMMAND and specify absolute path for bash while prepending PATH for tools.
+            # We use $ENV{PATH} (single dollar) so CMake expands it at configure time.
+            # We wrap the entire PATH assignment in quotes in the resulting CMake file.
             $content = $content -replace '(\s+)\$\{CMAKE_COMMAND\} -E env', '$1"$${CMAKE_COMMAND}" -E env'
-            $replaceWith = '"PATH=' + $msys64Path + ';$$ENV{PATH}" ' + $msysSh + ' ./configure'
+            
+            $replaceWith = '"PATH=' + $msysBinDir + ';$ENV{PATH}" ' + $msysBash + ' ./configure'
+            
+            # Actually, let's be more precise. We want to replace 'sh ./configure' only where it's the command.
             $content = $content -replace 'sh ./configure', $replaceWith
             $modified = $true
-            Write-Host "FFmpeg: hardcoded MSYS2 sh and prepended PATH." -ForegroundColor Green
+            Write-Host "FFmpeg: hardcoded MSYS2 bash and prepended PATH ($msysBinDir)." -ForegroundColor Green
         }
         if ($modified) {
             Set-Content $ffmpegCmake -Value $content -NoNewline
@@ -372,9 +382,12 @@ function Invoke-PhaseConfigure {
 
     # Build CMAKE_PROGRAM_PATH to ensure MSYS2 tools are found first (for sh, sed, awk, etc.)
     # This is cleaner than patching individual cmake files.
-    $msys64UsrBin = "C:/msys64/usr/bin"
-    $msys64Mingw64Bin = "C:/msys64/mingw64/bin"
-    $cmakeProgramPath = "$msys64UsrBin;$msys64Mingw64Bin"
+    $msysUsrBin = $envInfo.MsysBin -replace '\\', '/'
+    if (-not $msysUsrBin) { throw "MSYS2 bin directory not found. Please ensure MSYS2 is installed in C:\tools\msys64 or C:\msys64." }
+    # $msysUsrBin is ".../usr/bin", so parent of parent is the MSYS2 root
+    $msysRootPath = Split-Path (Split-Path $msysUsrBin -Parent) -Parent
+    $msysMingw64Bin = "$msysRootPath/mingw64/bin"
+    $cmakeProgramPath = "$msysUsrBin;$msysMingw64Bin"
 
     $cmakeArgs = @(
         "-B", $buildDir,
