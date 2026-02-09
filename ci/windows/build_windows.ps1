@@ -177,24 +177,34 @@ if (Test-Path "configure") {
             
             $bytes = [System.IO.File]::ReadAllBytes($file)
             $text = [System.Text.Encoding]::UTF8.GetString($bytes)
-            $modified = $false
             
             # Normalize to LF
             if ($text -match "`r`n") {
                 $text = $text -replace "`r`n", "`n"
-                $modified = $true
-            }
-            
-            # Specific fix for configure script only
-            if ($file -match "configure$" -and $text -match 'cl_major_ver=') {
-                $regex = 'cl_major_ver=\$\(cl\.exe 2>&1 \| sed -n .*?\)'
-                $text = [System.Text.RegularExpressions.Regex]::Replace($text, $regex, 'cl_major_ver=19')
-                $modified = $true
-            }
-            
-            if ($modified) {
                 $utf8NoBOM = New-Object System.Text.UTF8Encoding $false
                 [System.IO.File]::WriteAllText($file, $text, $utf8NoBOM)
+            }
+        }
+    }
+    
+    # ----------------------------------------------------------------
+    # MANDATORY FIX: Hardcode cl_major_ver in configure
+    # This must run regardless of how line endings were fixed.
+    # ----------------------------------------------------------------
+    if (Test-Path $configure) {
+        $text = [System.IO.File]::ReadAllText($configure)
+        if ($text -match 'cl_major_ver=') {
+            # Regex to find the complex shell command FFmpeg uses to detect MSVC version
+            # We replace it with a hardcoded static assignment.
+            $regex = 'cl_major_ver=\$\(cl\.exe 2>&1 \| sed -n .*?\)'
+            $newText = [System.Text.RegularExpressions.Regex]::Replace($text, $regex, 'cl_major_ver=19')
+            
+            if ($text -ne $newText) {
+                $utf8NoBOM = New-Object System.Text.UTF8Encoding $false
+                [System.IO.File]::WriteAllText($configure, $newText, $utf8NoBOM)
+                Write-Host "FFmpeg patch: Hardcoded cl_major_ver=19" -ForegroundColor Green
+            } else {
+                 Write-Warning "FFmpeg patch: Could not match cl_major_ver detection line! Verify regex."
             }
         }
     }
