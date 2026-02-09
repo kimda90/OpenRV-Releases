@@ -326,10 +326,10 @@ function Invoke-PhaseConfigure {
         $content = Get-Content $ffmpegCmake -Raw
         $modified = $false
         # Fix 1: Insert --toolchain=msvc first (so it doesn't default to gcc/clang)
-        if ($content -notmatch '\$\{_configure_command\} --toolchain=msvc --prefix=') {
+        if ($content -notmatch '--toolchain=msvc') {
             $content = $content -replace '\$\{_configure_command\} --prefix=', '$${_configure_command} --toolchain=msvc --prefix='
             $modified = $true
-            Write-Host "FFmpeg: added --toolchain=msvc before --prefix in CONFIGURE_COMMAND." -ForegroundColor Green
+            Write-Host "FFmpeg: added --toolchain=msvc." -ForegroundColor Green
         }
         # Fix 2: Add our PowerShell patch shim to the PATCH_COMMAND step.
         if ($content -notmatch 'patch_ffmpeg.ps1') {
@@ -337,23 +337,18 @@ function Invoke-PhaseConfigure {
             $replacement = 'PATCH_COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "' + $shimPath + '" COMMAND $${RV_FFMPEG_PATCH_COMMAND_STEP}'
             $content = $content -replace 'PATCH_COMMAND \$\{RV_FFMPEG_PATCH_COMMAND_STEP\}', $replacement
             $modified = $true
-            Write-Host "FFmpeg: added PowerShell patch shim to PATCH_COMMAND." -ForegroundColor Green
+            Write-Host "FFmpeg: added PowerShell patch shim." -ForegroundColor Green
         }
-        # Fix 3: Prepend MSYS2 to PATH for FFmpeg's CONFIGURE_COMMAND
-        if ($content -notmatch 'CMAKE_COMMAND.*-E env.*PATH=.*msys') {
-            $allMsysPaths = $envInfo.MsysBinPaths | ForEach-Object { ($_ -replace '\\', '/') }
-            $allMsysPathsStr = ($allMsysPaths -join ';')
-            
-            $msysBinDir = $allMsysPaths[0]
+        # Fix 3: Use absolute path for bash to avoid shell detection issues.
+        # This replaces 'sh ./configure' with an absolute path like 'C:/msys64/usr/bin/bash.exe ./configure'
+        if ($content -notmatch '/bash\.exe ./configure') {
+            $msysBinDir = $envInfo.MsysBinPaths[0] -replace '\\', '/'
             $msysBash = "$msysBinDir/bash.exe"
             if (-not (Test-Path $msysBash)) { $msysBash = "$msysBinDir/sh.exe" }
-
-            # Quote CMAKE_COMMAND and specify absolute path for bash while prepending PATH for tools.
-            $content = $content -replace '(\s+)\$\{CMAKE_COMMAND\} -E env', '$1"$${CMAKE_COMMAND}" -E env'
-            $replaceWith = '"PATH=' + $allMsysPathsStr + ';$ENV{PATH}" ' + $msysBash + ' ./configure'
-            $content = $content -replace 'sh ./configure', $replaceWith
+            
+            $content = $content -replace 'sh ./configure', "$msysBash ./configure"
             $modified = $true
-            Write-Host "FFmpeg: prepended all MSYS2 paths ($allMsysPathsStr)." -ForegroundColor Green
+            Write-Host "FFmpeg: used absolute shell path: $msysBash" -ForegroundColor Green
         }
         if ($modified) {
             Set-Content $ffmpegCmake -Value $content -NoNewline
