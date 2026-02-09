@@ -175,26 +175,36 @@ if ($content -match 'cl_major_ver=') {
     $shimContent | Set-Content $ffmpegPatchShim -Encoding ASCII
     $env:FFMPEG_PATCH_SHIM = $ffmpegPatchShim
 
-    # Detect MSYS2 and Git usr/bin
-    $msysRoot = $(if (Test-Path "C:\tools\msys64") { "C:\tools\msys64" } elseif (Test-Path "C:\msys64") { "C:\msys64" } else { $null })
-    $msysBin = $(if ($msysRoot) { Join-Path $msysRoot "usr\bin" })
-    $shExe = $(if ($msysBin) { Join-Path $msysBin "sh.exe" })
-    if (-not (Test-Path $shExe)) { $shExe = $(Get-Command sh.exe -ErrorAction SilentlyContinue).Source }
+    # Detect all potential MSYS2 installations
+    $msysRoots = @("C:\msys64", "C:\tools\msys64") | Where-Object { Test-Path $_ }
+    $msysBinPaths = @()
+    $primaryMsysRoot = $null
+    $shExe = $null
+
+    foreach ($root in $msysRoots) {
+        $bin = Join-Path $root "usr\bin"
+        if (Test-Path $bin) {
+            $msysBinPaths += $bin
+            $msysBinPaths += Join-Path $root "mingw64\bin"
+            if (-not $shExe) {
+                $sh = Join-Path $bin "sh.exe"
+                if (Test-Path $sh) { 
+                    $shExe = $sh 
+                    $primaryMsysRoot = $root
+                }
+            }
+        }
+    }
+
+    if (-not $shExe) { $shExe = $(Get-Command sh.exe -ErrorAction SilentlyContinue).Source }
 
     $gitUsrBin = "C:\Program Files\Git\usr\bin"
     if (-not (Test-Path (Join-Path $gitUsrBin "patch.exe"))) { $gitUsrBin = $null }
 
-    # Build path components in order of priority (MSYS2 MUST be ahead of Git's sh.exe)
-    $pathComponents = @(
-        $shimBinDir,
-        "C:\Program Files\CMake\bin",
-        $pythonDir,
-        "$env:USERPROFILE\.cargo\bin",
-        $(if ($msysRoot) { Join-Path $msysRoot "mingw64\bin" }),
-        $msysBin,
-        $gitUsrBin,
-        "C:\Strawberry\perl\bin"
-    )
+    # Build path components in order of priority (Detected MSYS2s MUST be ahead of Git's sh.exe)
+    $pathComponents = @($shimBinDir, "C:\Program Files\CMake\bin", $pythonDir, "$env:USERPROFILE\.cargo\bin")
+    $pathComponents += $msysBinPaths
+    $pathComponents += @($gitUsrBin, "C:\Strawberry\perl\bin")
 
     # Prepend VC tools if derived
     if ($vcBinDerived) { $pathComponents = @($vcBinDerived) + $pathComponents }
@@ -235,7 +245,9 @@ if ($content -match 'cl_major_ver=') {
     $env:CC = "cl"
     $env:CXX = "cl"
 
-    return @{ QtHome = $qtHome; PythonDir = $pythonDir; FfmpegPatchShim = $ffmpegPatchShim; ShExe = $shExe; MsysBin = $msysBin }
+    $msysBin = $null
+    if ($primaryMsysRoot) { $msysBin = Join-Path $primaryMsysRoot "usr\bin" }
+    return @{ QtHome = $qtHome; PythonDir = $pythonDir; FfmpegPatchShim = $ffmpegPatchShim; ShExe = $shExe; MsysBin = $msysBin; MsysBinPaths = $msysBinPaths }
 }
 
 # ============================================================================
@@ -328,28 +340,20 @@ function Invoke-PhaseConfigure {
             Write-Host "FFmpeg: added PowerShell patch shim to PATCH_COMMAND." -ForegroundColor Green
         }
         # Fix 3: Prepend MSYS2 to PATH for FFmpeg's CONFIGURE_COMMAND
-        # The default 'sh ./configure' picks up an incompatible shell on Windows that doesn't
-        # understand POSIX case patterns like [TD]*, causing syntax errors.
-        # CMAKE_PROGRAM_PATH only affects find_program(), not runtime command execution.
         if ($content -notmatch 'CMAKE_COMMAND.*-E env.*PATH=.*msys') {
-            # Use detected MSYS2 bin dir or fallback
-            $msysBinDir = $envInfo.MsysBin -replace '\\', '/'
-            if (-not $msysBinDir) { throw "MSYS2 bin directory not found. Please ensure MSYS2 is installed in C:\tools\msys64 or C:\msys64." }
+            $allMsysPaths = $envInfo.MsysBinPaths | ForEach-Object { ($_ -replace '\\', '/') }
+            $allMsysPathsStr = ($allMsysPaths -join ';')
             
+            $msysBinDir = $allMsysPaths[0]
             $msysBash = "$msysBinDir/bash.exe"
             if (-not (Test-Path $msysBash)) { $msysBash = "$msysBinDir/sh.exe" }
 
             # Quote CMAKE_COMMAND and specify absolute path for bash while prepending PATH for tools.
-            # We use $ENV{PATH} (single dollar) so CMake expands it at configure time.
-            # We wrap the entire PATH assignment in quotes in the resulting CMake file.
             $content = $content -replace '(\s+)\$\{CMAKE_COMMAND\} -E env', '$1"$${CMAKE_COMMAND}" -E env'
-            
-            $replaceWith = '"PATH=' + $msysBinDir + ';$ENV{PATH}" ' + $msysBash + ' ./configure'
-            
-            # Actually, let's be more precise. We want to replace 'sh ./configure' only where it's the command.
+            $replaceWith = '"PATH=' + $allMsysPathsStr + ';$ENV{PATH}" ' + $msysBash + ' ./configure'
             $content = $content -replace 'sh ./configure', $replaceWith
             $modified = $true
-            Write-Host "FFmpeg: hardcoded MSYS2 bash and prepended PATH ($msysBinDir)." -ForegroundColor Green
+            Write-Host "FFmpeg: prepended all MSYS2 paths ($allMsysPathsStr)." -ForegroundColor Green
         }
         if ($modified) {
             Set-Content $ffmpegCmake -Value $content -NoNewline
@@ -380,14 +384,21 @@ function Invoke-PhaseConfigure {
     $winPerlCmake = "C:/Strawberry/perl/bin"
     $shExeCmake = $envInfo.ShExe -replace '\\', '/'
 
-    # Build CMAKE_PROGRAM_PATH to ensure MSYS2 tools are found first (for sh, sed, awk, etc.)
-    # This is cleaner than patching individual cmake files.
-    $msysUsrBin = $envInfo.MsysBin -replace '\\', '/'
-    if (-not $msysUsrBin) { throw "MSYS2 bin directory not found. Please ensure MSYS2 is installed in C:\tools\msys64 or C:\msys64." }
-    # $msysUsrBin is ".../usr/bin", so parent of parent is the MSYS2 root
-    $msysRootPath = Split-Path (Split-Path $msysUsrBin -Parent) -Parent
-    $msysMingw64Bin = "$msysRootPath/mingw64/bin"
-    $cmakeProgramPath = "$msysUsrBin;$msysMingw64Bin"
+    # Build CMAKE_PROGRAM_PATH to ensure ALL detected MSYS2 tools are found (for flex, bison, sh, etc.)
+    $msysBinPathsCmake = $envInfo.MsysBinPaths | ForEach-Object { $_ -replace '\\', '/' }
+    if ($msysBinPathsCmake.Count -eq 0) { throw "No MSYS2 bin directories found. Please ensure MSYS2 is installed in C:\tools\msys64 or C:\msys64." }
+    
+    # Fail fast: verify flex.exe is actually available in the paths we detected
+    $foundFlex = $false
+    foreach ($p in $msysBinPathsCmake) {
+        if (Test-Path (Join-Path $p "flex.exe")) { $foundFlex = $true; break }
+    }
+    if (-not $foundFlex) {
+        Write-Host "WARNING: 'flex.exe' was not found in detected MSYS2 paths. CMake is likely to fail." -ForegroundColor Red
+        Write-Host "Searched in: $($msysBinPathsCmake -join ', ')" -ForegroundColor Gray
+    }
+
+    $cmakeProgramPath = $msysBinPathsCmake -join ';'
 
     $cmakeArgs = @(
         "-B", $buildDir,
