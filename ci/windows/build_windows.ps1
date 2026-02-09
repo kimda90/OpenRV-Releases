@@ -157,24 +157,59 @@ set > "$tempEnv"
     $ffmpegPatchShim = Join-Path $shimBinDir "patch_ffmpeg.ps1"
     $shimContent = @'
 if (Test-Path "configure") {
-    $content = [System.IO.File]::ReadAllText((Resolve-Path "configure").Path)
+    $configure = (Resolve-Path "configure").Path
+    Write-Host "FFmpeg patch: Processing scripts in $(Split-Path $configure)"
     
-    # 1. Hardcode cl_major_ver if found (fixes MSVC detection)
-    # The regex is now more flexible to handle variations in the configure script
-    if ($content -match 'cl_major_ver=') {
-        $regex = 'cl_major_ver=\$\(cl\.exe 2>&1 \| sed -n .*?\)'
-        $content = [System.Text.RegularExpressions.Regex]::Replace($content, $regex, 'cl_major_ver=19')
-        Write-Host "FFmpeg patch: hardcoded cl_major_ver=19"
+    # Define file types to normalize: configure + .sh scripts + .mak files
+    $filesToPatch = @("configure") + (Get-ChildItem -Recurse -Filter "*.sh").FullName + (Get-ChildItem -Recurse -Filter "*.mak").FullName
+    
+    # Try using dos2unix first (most reliable)
+    if (Get-Command "dos2unix" -ErrorAction SilentlyContinue) {
+        Write-Host "FFmpeg patch: Using system dos2unix on $($filesToPatch.Count) files..."
+        foreach ($file in $filesToPatch) {
+             if (Test-Path $file) { & dos2unix "$file" 2>&1 | Out-Null }
+        }
+    } else {
+        # Fallback: Binary-safe CRLF -> LF conversion for specific target files
+        Write-Host "FFmpeg patch: Using binary replacement on $($filesToPatch.Count) files..."
+        foreach ($file in $filesToPatch) {
+            if (-not (Test-Path $file)) { continue }
+            
+            $bytes = [System.IO.File]::ReadAllBytes($file)
+            $text = [System.Text.Encoding]::UTF8.GetString($bytes)
+            $modified = $false
+            
+            # Normalize to LF
+            if ($text -match "`r`n") {
+                $text = $text -replace "`r`n", "`n"
+                $modified = $true
+            }
+            
+            # Specific fix for configure script only
+            if ($file -match "configure$" -and $text -match 'cl_major_ver=') {
+                $regex = 'cl_major_ver=\$\(cl\.exe 2>&1 \| sed -n .*?\)'
+                $text = [System.Text.RegularExpressions.Regex]::Replace($text, $regex, 'cl_major_ver=19')
+                $modified = $true
+            }
+            
+            if ($modified) {
+                $utf8NoBOM = New-Object System.Text.UTF8Encoding $false
+                [System.IO.File]::WriteAllText($file, $text, $utf8NoBOM)
+            }
+        }
     }
     
-    # 2. MANDATORY: Force LF line endings for POSIX shell compatibility on Windows
-    # This fixes the "syntax error near unexpected token ')'" error
-    $content = $content -replace "`r`n", "`n"
-    
-    # 3. Save as UTF-8 without BOM
-    $utf8NoBOM = New-Object System.Text.UTF8Encoding $false
-    [System.IO.File]::WriteAllText((Resolve-Path "configure").Path, $content, $utf8NoBOM)
-    Write-Host "FFmpeg patch: normalized configure to LF line endings"
+    # Verification (check configure only)
+    $checkBytes = [System.IO.File]::ReadAllBytes($configure)
+    $hasCR = $false
+    for ($i = 0; $i -lt [Math]::Min($checkBytes.Length, 1000); $i++) {
+        if ($checkBytes[$i] -eq 13) { $hasCR = $true; break }
+    }
+    if ($hasCR) {
+        Write-Warning "FFmpeg patch: CR bytes detected in configure script! Build may fail."
+    } else {
+        Write-Host "FFmpeg patch: Verified no CR bytes in header."
+    }
 }
 '@
     $shimContent | Set-Content $ffmpegPatchShim -Encoding UTF8
@@ -444,6 +479,33 @@ function Invoke-PhaseBuildDependencies {
 }
 
 # ============================================================================
+# Phase: BuildFFmpeg (Debug Helper)
+# ============================================================================
+function Invoke-PhaseBuildFFmpeg {
+    Write-Host "[Phase: BuildFFmpeg] Building ONLY RV_DEPS_FFMPEG target" -ForegroundColor Magenta
+    if (-not (Test-Path $buildDir)) { throw "Build dir not found. Run Configure first." }
+
+    New-Item -ItemType Directory -Path $BuildLogDir -Force | Out-Null
+    $logFile = Join-Path $BuildLogDir "build_ffmpeg_debug.log"
+
+    $cpuCount = [Environment]::ProcessorCount
+    Push-Location $WorkDir
+    try {
+        # Target ONLY FFmpeg to speed up the loop
+        & cmake --build $buildDir --config Release --parallel $cpuCount --target RV_DEPS_FFMPEG 2>&1 | Tee-Object -FilePath $logFile
+        if ($LASTEXITCODE -ne 0) {
+            Write-BuildTail -LogPath $logFile -TailLines $TailLinesOnFailure -IncludeErrors
+            throw "CMake build FFmpeg failed with exit code $LASTEXITCODE"
+        }
+        Write-Host "`n--- Last $TailLinesNormal lines ---" -ForegroundColor Gray
+        Get-Content $logFile -Tail $TailLinesNormal
+    } finally {
+        Pop-Location
+    }
+    Write-Host "BuildFFmpeg phase completed." -ForegroundColor Green
+}
+
+# ============================================================================
 # Phase: BuildMain
 # ============================================================================
 function Invoke-PhaseBuildMain {
@@ -525,6 +587,7 @@ if ($Phase -eq 'All') {
         'Venv'                { Invoke-PhaseVenv }
         'Configure'           { Invoke-PhaseConfigure }
         'BuildDependencies'   { Invoke-PhaseBuildDependencies }
+        'BuildFFmpeg'         { Invoke-PhaseBuildFFmpeg }
         'BuildMain'           { Invoke-PhaseBuildMain }
         'Verify'              { Invoke-PhaseVerify }
     }
