@@ -327,37 +327,31 @@ function Invoke-PhaseConfigure {
         }
     }
     $ffmpegCmake = Join-Path $WorkDir "cmake\dependencies\ffmpeg.cmake"
-    if (Test-Path $ffmpegCmake) {
-        $content = Get-Content $ffmpegCmake -Raw
-        $modified = $false
-        # Fix 1: Insert --toolchain=msvc first (so it doesn't default to gcc/clang)
-        if ($content -notmatch '--toolchain=msvc') {
-            $content = $content -replace '\$\{_configure_command\} --prefix=', '$${_configure_command} --toolchain=msvc --prefix='
-            $modified = $true
-            Write-Host "FFmpeg: added --toolchain=msvc." -ForegroundColor Green
+    $ffmpegTemplate = Join-Path $PSScriptRoot "ffmpeg_windows_patched.cmake"
+    
+    if (Test-Path $ffmpegTemplate) {
+        Write-Host "FFmpeg: Overwriting ffmpeg.cmake with patched Windows template..." -ForegroundColor Cyan
+        $content = Get-Content $ffmpegTemplate -Raw
+        
+        # Inject the dynamic path to the PowerShell shim
+        $shimPath = ($env:FFMPEG_PATCH_SHIM -replace '\\', '/')
+        $content = $content -replace '@FFMPEG_PATCH_SHIM@', $shimPath
+        
+        # Inject correct MSYS2 bash path
+        $msysBinDir = $envInfo.MsysBinPaths[0] -replace '\\', '/'
+        $msysBash = "$msysBinDir/bash.exe"
+        if (-not (Test-Path $msysBash)) { $msysBash = "$msysBinDir/sh.exe" }
+        # Note: The template already has "C:/msys64/usr/bin/bash.exe", but we should update it to the detected one if different.
+        # However, for now, let's just trust the template or do a simple replace if "C:/msys64" isn't correct.
+        if ($msysBash -notmatch "C:/msys64") {
+             $content = $content.Replace('"C:/msys64/usr/bin/bash.exe"', '"' + $msysBash + '"')
+             Write-Host "FFmpeg: Updated shell path to detected: $msysBash" -ForegroundColor Gray
         }
-        # Fix 2: Add our PowerShell patch shim to the PATCH_COMMAND step.
-        if ($content -notmatch 'patch_ffmpeg.ps1') {
-            $shimPath = ($env:FFMPEG_PATCH_SHIM -replace '\\', '/')
-            $replacement = 'PATCH_COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "' + $shimPath + '" COMMAND $${RV_FFMPEG_PATCH_COMMAND_STEP}'
-            $content = $content -replace 'PATCH_COMMAND \$\{RV_FFMPEG_PATCH_COMMAND_STEP\}', $replacement
-            $modified = $true
-            Write-Host "FFmpeg: added PowerShell patch shim." -ForegroundColor Green
-        }
-        # Fix 3: Use absolute path for bash to avoid shell detection issues.
-        # This replaces 'sh ./configure' with an absolute path like 'C:/msys64/usr/bin/bash.exe ./configure'
-        if ($content -notmatch '/bash\.exe ./configure') {
-            $msysBinDir = $envInfo.MsysBinPaths[0] -replace '\\', '/'
-            $msysBash = "$msysBinDir/bash.exe"
-            if (-not (Test-Path $msysBash)) { $msysBash = "$msysBinDir/sh.exe" }
-            
-            $content = $content -replace 'sh ./configure', "$msysBash ./configure"
-            $modified = $true
-            Write-Host "FFmpeg: used absolute shell path: $msysBash" -ForegroundColor Green
-        }
-        if ($modified) {
-            Set-Content $ffmpegCmake -Value $content -NoNewline
-        }
+
+        Set-Content $ffmpegCmake -Value $content -NoNewline
+        Write-Host "FFmpeg: patched ffmpeg.cmake successfully." -ForegroundColor Green
+    } else {
+        Write-Error "FFmpeg: Could not find patched template at $ffmpegTemplate"
     }
     # atomic_ops uses autoconf; with CC=cl the "C compiler cannot create executables" test fails. Use gcc for this dep only.
     $atomicOpsCmake = Join-Path $WorkDir "cmake\dependencies\atomic_ops.cmake"
