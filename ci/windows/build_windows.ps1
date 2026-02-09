@@ -334,7 +334,7 @@ function Invoke-PhaseConfigure {
         if ($content -notmatch 'CMAKE_COMMAND.*-E env.*PATH=.*msys64') {
             $msys64Path = "C:/msys64/usr/bin"
             # Build replacement string separately to avoid -replace parsing issues
-            $replaceWith = '$${CMAKE_COMMAND} -E env "PATH=' + $msys64Path + ';$$ENV{PATH}" $${_configure_command}'
+            $replaceWith = '"$${CMAKE_COMMAND}" -E env "PATH=' + $msys64Path + ';$$ENV{PATH}" $${_configure_command}'
             $content = $content -replace '\$\{_configure_command\}', $replaceWith
             $modified = $true
             Write-Host "FFmpeg: prepended MSYS2 to PATH in CONFIGURE_COMMAND." -ForegroundColor Green
@@ -348,7 +348,7 @@ function Invoke-PhaseConfigure {
     if (Test-Path $atomicOpsCmake) {
         $content = Get-Content $atomicOpsCmake -Raw
         if ($content -notmatch 'CC=gcc CXX=g\+\+ \$\{_configure_command\}') {
-            $content = $content -replace 'CONFIGURE_COMMAND \$\{_autogen_command\} && \$\{_configure_command\} \$\{_configure_args\}', 'CONFIGURE_COMMAND $${CMAKE_COMMAND} -E env CC=gcc CXX=g++ $${_autogen_command} && $${CMAKE_COMMAND} -E env CC=gcc CXX=g++ $${_configure_command} $${_configure_args}'
+            $content = $content -replace 'CONFIGURE_COMMAND \$\{_autogen_command\} && \$\{_configure_command\} \$\{_configure_args\}', 'CONFIGURE_COMMAND "$${CMAKE_COMMAND}" -E env CC=gcc CXX=g++ $${_autogen_command} && "$${CMAKE_COMMAND}" -E env CC=gcc CXX=g++ $${_configure_command} $${_configure_args}'
             Set-Content $atomicOpsCmake -Value $content -NoNewline
             Write-Host "atomic_ops: CONFIGURE_COMMAND now uses gcc for both autogen and configure." -ForegroundColor Green
         }
