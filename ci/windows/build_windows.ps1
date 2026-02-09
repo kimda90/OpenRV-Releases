@@ -333,8 +333,9 @@ function Invoke-PhaseConfigure {
         # CMAKE_PROGRAM_PATH only affects find_program(), not runtime command execution.
         if ($content -notmatch 'CMAKE_COMMAND.*-E env.*PATH=.*msys64') {
             $msys64Path = "C:/msys64/usr/bin"
-            # Wrap _configure_command with PATH prepend
-            $content = $content -replace '(\$\{_configure_command\})', '$${CMAKE_COMMAND} -E env "PATH=' + $msys64Path + ';`$ENV{PATH}" $1'
+            # Build replacement string separately to avoid -replace parsing issues
+            $replaceWith = '$${CMAKE_COMMAND} -E env "PATH=' + $msys64Path + ';$$ENV{PATH}" $${_configure_command}'
+            $content = $content -replace '\$\{_configure_command\}', $replaceWith
             $modified = $true
             Write-Host "FFmpeg: prepended MSYS2 to PATH in CONFIGURE_COMMAND." -ForegroundColor Green
         }
