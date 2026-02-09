@@ -169,50 +169,86 @@ if (Test-Path "configure") {
         foreach ($file in $filesToPatch) {
              if (Test-Path $file) { & dos2unix "$file" 2>&1 | Out-Null }
         }
-    } else {
-        # Fallback: Binary-safe CRLF -> LF conversion for specific target files
-        Write-Host "FFmpeg patch: Using binary replacement on $($filesToPatch.Count) files..."
-        foreach ($file in $filesToPatch) {
-            if (-not (Test-Path $file)) { continue }
-            
-            $bytes = [System.IO.File]::ReadAllBytes($file)
-            $text = [System.Text.Encoding]::UTF8.GetString($bytes)
-            
-            # Normalize to LF
-            if ($text -match "`r`n") {
-                $text = $text -replace "`r`n", "`n"
-                $utf8NoBOM = New-Object System.Text.UTF8Encoding $false
-                [System.IO.File]::WriteAllText($file, $text, $utf8NoBOM)
-            }
-        }
-    }
+	    } else {
+	        # Fallback: Binary-safe CRLF -> LF conversion for specific target files
+	        Write-Host "FFmpeg patch: Using binary replacement on $($filesToPatch.Count) files..."
+	        foreach ($file in $filesToPatch) {
+	            if (-not (Test-Path $file)) { continue }
+	            
+	            $bytes = [System.IO.File]::ReadAllBytes($file)
+	            $changed = $false
+	            $out = New-Object System.Collections.Generic.List[byte] ($bytes.Length)
+	            for ($i = 0; $i -lt $bytes.Length; $i++) {
+	                # Replace CRLF (13,10) with LF (10) without decoding/recoding the file.
+	                if ($i -lt ($bytes.Length - 1) -and $bytes[$i] -eq 13 -and $bytes[$i + 1] -eq 10) {
+	                    $out.Add(10) | Out-Null
+	                    $i++
+	                    $changed = $true
+	                } else {
+	                    $out.Add($bytes[$i]) | Out-Null
+	                }
+	            }
+	            if ($changed) { [System.IO.File]::WriteAllBytes($file, $out.ToArray()) }
+	        }
+	    }
     
-    # ----------------------------------------------------------------
-    # MANDATORY FIX: Hardcode cl_major_ver in configure
-    # This must run regardless of how line endings were fixed.
-    # ----------------------------------------------------------------
-    if (Test-Path $configure) {
-        $text = [System.IO.File]::ReadAllText($configure)
-        if ($text -match 'cl_major_ver=') {
-            # Regex to find the complex shell command FFmpeg uses to detect MSVC version
-            # We replace it with a hardcoded static assignment.
-            $regex = 'cl_major_ver=\$\(cl\.exe 2>&1 \| sed -n .*?\)'
-            $newText = [System.Text.RegularExpressions.Regex]::Replace($text, $regex, 'cl_major_ver=19')
-            
-            if ($text -ne $newText) {
-                $utf8NoBOM = New-Object System.Text.UTF8Encoding $false
-                [System.IO.File]::WriteAllText($configure, $newText, $utf8NoBOM)
-                Write-Host "FFmpeg patch: Hardcoded cl_major_ver=19" -ForegroundColor Green
-            } else {
-                 Write-Warning "FFmpeg patch: Could not match cl_major_ver detection line! Verify regex."
-            }
-        }
-    }
-    
-    # Verification (check configure only)
-    $checkBytes = [System.IO.File]::ReadAllBytes($configure)
-    $hasCR = $false
-    for ($i = 0; $i -lt [Math]::Min($checkBytes.Length, 1000); $i++) {
+	    # ----------------------------------------------------------------
+	    # MANDATORY FIX: Hardcode cl_major_ver in configure
+	    # This must run regardless of how line endings were fixed.
+	    # ----------------------------------------------------------------
+		    if (Test-Path $configure) {
+		        $text = [System.IO.File]::ReadAllText($configure)
+		        if ($text -match '(?m)^[ \t]*cl_major_ver=19[ \t]*\r?$') {
+		            Write-Host "FFmpeg patch: cl_major_ver already hardcoded"
+	        } elseif ($text -match 'cl_major_ver=') {
+	            # FFmpeg's cl_major_ver line contains '\)' inside the sed script, so avoid
+	            # a non-greedy match that stops at the first ')' and corrupts configure.
+	            $regex = '(?m)^([ \t]*)cl_major_ver=\$\(cl\.exe[^\n]*\)[ \t]*\r?$'
+	            $newText = [System.Text.RegularExpressions.Regex]::Replace($text, $regex, '$1cl_major_ver=19')
+	            
+	            if ($text -eq $newText) {
+	                # Fallback: match any command-substitution assignment to cl_major_ver
+	                $regex = '(?m)^([ \t]*)cl_major_ver=\$\([^\n]*\)[ \t]*\r?$'
+	                $newText = [System.Text.RegularExpressions.Regex]::Replace($text, $regex, '$1cl_major_ver=19')
+	            }
+	
+	            if ($text -ne $newText) {
+	                $utf8NoBOM = New-Object System.Text.UTF8Encoding $false
+	                [System.IO.File]::WriteAllText($configure, $newText, $utf8NoBOM)
+	                Write-Host "FFmpeg patch: Hardcoded cl_major_ver=19" -ForegroundColor Green
+	            } else {
+	                 Write-Warning "FFmpeg patch: Could not match cl_major_ver detection line! Verify regex."
+	            }
+		        }
+		    }
+	    
+	    # Log the final cl_major_ver assignment (useful when debugging configure parse errors)
+	    $clLine = $null
+	    try {
+	        $m = Select-String -Path $configure -Pattern '^[ \t]*cl_major_ver=' -ErrorAction SilentlyContinue | Select-Object -First 1
+	        if ($m) { $clLine = $m.Line }
+	    } catch {}
+	    if ($clLine) { Write-Host "FFmpeg patch: cl_major_ver => $clLine" }
+
+	    # Sanity check: ensure configure is still syntactically valid under bash (catches accidental corruption early)
+	    $bashExe = $env:RV_MSYS_BASH
+	    if (-not $bashExe -or -not (Test-Path $bashExe)) {
+	        $bashExe = (Get-Command bash.exe -ErrorAction SilentlyContinue).Source
+	    }
+	    if ($bashExe -and (Test-Path $bashExe)) {
+	        Write-Host "FFmpeg patch: Syntax check: $bashExe -n configure"
+	        $syntaxOut = & $bashExe -n configure 2>&1
+	        $syntaxExit = $LASTEXITCODE
+	        if ($syntaxOut) { $syntaxOut | ForEach-Object { Write-Host $_ } }
+	        if ($syntaxExit -ne 0) { throw "FFmpeg patch: configure failed syntax check" }
+	    } else {
+	        Write-Warning "FFmpeg patch: bash.exe not found; skipping configure syntax check."
+	    }
+	    
+	    # Verification (check configure only)
+	    $checkBytes = [System.IO.File]::ReadAllBytes($configure)
+	    $hasCR = $false
+	    for ($i = 0; $i -lt [Math]::Min($checkBytes.Length, 1000); $i++) {
         if ($checkBytes[$i] -eq 13) { $hasCR = $true; break }
     }
     if ($hasCR) {
@@ -246,7 +282,14 @@ if (Test-Path "configure") {
         }
     }
 
-    if (-not $shExe) { $shExe = $(Get-Command sh.exe -ErrorAction SilentlyContinue).Source }
+	    if (-not $shExe) { $shExe = $(Get-Command sh.exe -ErrorAction SilentlyContinue).Source }
+
+	    # Expose a stable MSYS2 bash path for downstream tools/shims (prefer bash.exe; fallback to sh.exe)
+	    $env:RV_MSYS_BASH = $null
+	    if ($shExe) {
+	        $bashCandidate = Join-Path (Split-Path $shExe -Parent) "bash.exe"
+	        if (Test-Path $bashCandidate) { $env:RV_MSYS_BASH = $bashCandidate } else { $env:RV_MSYS_BASH = $shExe }
+	    }
 
     $gitUsrBin = "C:\Program Files\Git\usr\bin"
     if (-not (Test-Path (Join-Path $gitUsrBin "patch.exe"))) { $gitUsrBin = $null }
