@@ -248,11 +248,12 @@ IF(RV_TARGET_WINDOWS)
   LIST(APPEND RV_FFMPEG_COMMON_CONFIG_OPTIONS "--toolchain=msvc")
   # OpenSSL 3.x on Windows requires additional system libs for link checks.
   # Without these, FFmpeg's configure may fail with "openssl not found".
-  LIST(APPEND RV_FFMPEG_COMMON_CONFIG_OPTIONS "--extra-libs=-lws2_32")
-  LIST(APPEND RV_FFMPEG_COMMON_CONFIG_OPTIONS "--extra-libs=-lgdi32")
-  LIST(APPEND RV_FFMPEG_COMMON_CONFIG_OPTIONS "--extra-libs=-ladvapi32")
-  LIST(APPEND RV_FFMPEG_COMMON_CONFIG_OPTIONS "--extra-libs=-lcrypt32")
-  LIST(APPEND RV_FFMPEG_COMMON_CONFIG_OPTIONS "--extra-libs=-luser32")
+  # Use MSVC-style lib names to avoid /l<name> flags that link.exe ignores.
+  LIST(APPEND RV_FFMPEG_COMMON_CONFIG_OPTIONS "--extra-libs=ws2_32.lib")
+  LIST(APPEND RV_FFMPEG_COMMON_CONFIG_OPTIONS "--extra-libs=gdi32.lib")
+  LIST(APPEND RV_FFMPEG_COMMON_CONFIG_OPTIONS "--extra-libs=advapi32.lib")
+  LIST(APPEND RV_FFMPEG_COMMON_CONFIG_OPTIONS "--extra-libs=crypt32.lib")
+  LIST(APPEND RV_FFMPEG_COMMON_CONFIG_OPTIONS "--extra-libs=user32.lib")
 ENDIF()
 
 # Change the condition to TRUE to be able to debug into FFmpeg.
@@ -364,12 +365,11 @@ LIST(REMOVE_DUPLICATES RV_FFMPEG_EXTRA_LIBPATH_OPTIONS)
 LIST(REMOVE_DUPLICATES RV_FFMPEG_EXTERNAL_LIBS)
 
 # On Windows, OpenSSL's dependency file passes `--extra-ldflags=-LIBPATH:<dir>`.
-# FFmpeg's MSVC flag filter treats `-L<dir>` specially and rewrites it to `-libpath:<dir>`,
-# but `-LIBPATH:<dir>` gets mangled into `-libpath:IBPATH:<dir>` and breaks library discovery.
+# Normalize to `-libpath:<dir>` so compat/windows/mslink forwards it correctly to link.exe.
 IF(RV_TARGET_WINDOWS)
   SET(_rv_ffmpeg_extra_libpath_options_sanitized "")
   FOREACH(_rv_ffmpeg_opt IN LISTS RV_FFMPEG_EXTRA_LIBPATH_OPTIONS)
-    STRING(REPLACE "--extra-ldflags=-LIBPATH:" "--extra-ldflags=-L" _rv_ffmpeg_opt "${_rv_ffmpeg_opt}")
+    STRING(REPLACE "--extra-ldflags=-LIBPATH:" "--extra-ldflags=-libpath:" _rv_ffmpeg_opt "${_rv_ffmpeg_opt}")
     LIST(APPEND _rv_ffmpeg_extra_libpath_options_sanitized "${_rv_ffmpeg_opt}")
   ENDFOREACH()
   SET(RV_FFMPEG_EXTRA_LIBPATH_OPTIONS "${_rv_ffmpeg_extra_libpath_options_sanitized}")
