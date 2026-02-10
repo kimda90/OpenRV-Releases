@@ -191,11 +191,39 @@ if (Test-Path "configure") {
 	            if ($changed) { [System.IO.File]::WriteAllBytes($file, $out.ToArray()) }
 	        }
 	    }
-    
+	    
 	    # ----------------------------------------------------------------
-	    # MANDATORY FIX: Hardcode cl_major_ver in configure
-	    # This must run regardless of how line endings were fixed.
+	    # OpenSSL import-lib compatibility for FFmpeg MSVC toolchain
+	    # FFmpeg maps -lssl/-lcrypto to ssl.lib/crypto.lib, but OpenSSL builds
+	    # produce libssl.lib/libcrypto.lib. Provide aliases if missing.
 	    # ----------------------------------------------------------------
+	    try {
+	        $srcDir = Split-Path $configure -Parent
+	        $ffmpegRoot = Split-Path $srcDir -Parent              # ...\RV_DEPS_FFMPEG
+	        $buildRoot = Split-Path $ffmpegRoot -Parent           # ...\_build
+	        $opensslLibDir = Join-Path $buildRoot "RV_DEPS_OPENSSL\\install\\lib"
+	        if (-not (Test-Path $opensslLibDir)) { $opensslLibDir = Join-Path $buildRoot "RV_DEPS_OPENSSL\\install\\lib64" }
+	        $aliases = @{
+	            "libssl.lib"    = "ssl.lib";
+	            "libcrypto.lib" = "crypto.lib";
+	        }
+	        foreach ($from in $aliases.Keys) {
+	            $to = $aliases[$from]
+	            $fromPath = Join-Path $opensslLibDir $from
+	            $toPath = Join-Path $opensslLibDir $to
+	            if ((Test-Path $fromPath) -and (-not (Test-Path $toPath))) {
+	                Copy-Item -Force $fromPath $toPath
+	                Write-Host "FFmpeg patch: OpenSSL alias: $from -> $to" -ForegroundColor Green
+	            }
+	        }
+	    } catch {
+	        Write-Warning "FFmpeg patch: OpenSSL alias step failed: $($_.Exception.Message)"
+	    }
+
+		    # ----------------------------------------------------------------
+		    # MANDATORY FIX: Hardcode cl_major_ver in configure
+		    # This must run regardless of how line endings were fixed.
+		    # ----------------------------------------------------------------
 		    if (Test-Path $configure) {
 		        $text = [System.IO.File]::ReadAllText($configure)
 		        if ($text -match '(?m)^[ \t]*cl_major_ver=19[ \t]*\r?$') {
@@ -449,6 +477,18 @@ function Invoke-PhaseConfigure {
             $content = $content -replace 'CONFIGURE_COMMAND \$\{_autogen_command\} && \$\{_configure_command\} \$\{_configure_args\}', 'CONFIGURE_COMMAND "$${CMAKE_COMMAND}" -E env CC=gcc CXX=g++ $${_autogen_command} && "$${CMAKE_COMMAND}" -E env CC=gcc CXX=g++ $${_configure_command} $${_configure_args}'
             Set-Content $atomicOpsCmake -Value $content -NoNewline
             Write-Host "atomic_ops: CONFIGURE_COMMAND now uses gcc for both autogen and configure." -ForegroundColor Green
+        }
+    }
+
+    # pcre2 uses autoconf/make; with CC=cl the configure tests fail. Use gcc for this dep only.
+    $pcre2Cmake = Join-Path $WorkDir "cmake\dependencies\pcre2.cmake"
+    if (Test-Path $pcre2Cmake) {
+        $content = Get-Content $pcre2Cmake -Raw
+        if ($content -notmatch 'CC=gcc CXX=g\+\+') {
+            $content = $content -replace 'CONFIGURE_COMMAND \$\{_pcre2_autogen_command\} && \$\{_pcre2_configure_command\} \$\{_pcre2_configure_args\}', 'CONFIGURE_COMMAND "$${CMAKE_COMMAND}" -E env CC=gcc CXX=g++ $${_pcre2_autogen_command} && "$${CMAKE_COMMAND}" -E env CC=gcc CXX=g++ $${_pcre2_configure_command} $${_pcre2_configure_args}'
+            $content = $content -replace 'BUILD_COMMAND make -j\$\{_cpu_count\}', 'BUILD_COMMAND "$${CMAKE_COMMAND}" -E env CC=gcc CXX=g++ make -j$${_cpu_count}'
+            Set-Content $pcre2Cmake -Value $content -NoNewline
+            Write-Host "pcre2: CONFIGURE_COMMAND/BUILD_COMMAND now use gcc." -ForegroundColor Green
         }
     }
 
