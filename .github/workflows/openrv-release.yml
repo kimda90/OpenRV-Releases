@@ -77,7 +77,9 @@ jobs:
           BMD_DECKLINK_SDK_ZIP_URL: ${{ secrets.BMD_DECKLINK_SDK_ZIP_URL }}
           NDI_SDK_URL: ${{ secrets.NDI_SDK_URL }}
         run: |
+          set -o pipefail
           mkdir -p out
+          mkdir -p out/logs
           BMD_E=""; NDI_E=""
           [ -n "$BMD_DECKLINK_SDK_ZIP_URL" ] && BMD_E="-e BMD_DECKLINK_SDK_ZIP_URL=$BMD_DECKLINK_SDK_ZIP_URL"
           [ -n "$NDI_SDK_URL" ] && NDI_E="-e NDI_SDK_URL=$NDI_SDK_URL"
@@ -89,7 +91,15 @@ jobs:
             -v "${{ github.workspace }}/ci/linux:/ci:ro" \
             -v "${{ github.workspace }}/out:/out" \
             openrv-build-rocky9 \
-            bash /ci/build_in_container.sh
+            bash /ci/build_in_container.sh 2>&1 | tee out/logs/build-linux-rocky9.log
+
+      - name: Upload Rocky9 logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-rocky9-logs
+          if-no-files-found: warn
+          path: out/logs/**
 
       - name: Upload Rocky9 artifact
         uses: actions/upload-artifact@v4
@@ -160,7 +170,9 @@ jobs:
           BMD_DECKLINK_SDK_ZIP_URL: ${{ secrets.BMD_DECKLINK_SDK_ZIP_URL }}
           NDI_SDK_URL: ${{ secrets.NDI_SDK_URL }}
         run: |
+          set -o pipefail
           mkdir -p out
+          mkdir -p out/logs
           BMD_E=""; NDI_E=""
           [ -n "$BMD_DECKLINK_SDK_ZIP_URL" ] && BMD_E="-e BMD_DECKLINK_SDK_ZIP_URL=$BMD_DECKLINK_SDK_ZIP_URL"
           [ -n "$NDI_SDK_URL" ] && NDI_E="-e NDI_SDK_URL=$NDI_SDK_URL"
@@ -173,7 +185,15 @@ jobs:
             -v "${{ github.workspace }}/ci/linux:/ci:ro" \
             -v "${{ github.workspace }}/out:/out" \
             openrv-build-rocky8 \
-            bash /ci/build_in_container.sh
+            bash /ci/build_in_container.sh 2>&1 | tee out/logs/build-linux-rocky8.log
+
+      - name: Upload Rocky8 logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-rocky8-logs
+          if-no-files-found: warn
+          path: out/logs/**
 
       - name: Upload Rocky8 artifact
         uses: actions/upload-artifact@v4
@@ -242,7 +262,9 @@ jobs:
           BMD_DECKLINK_SDK_ZIP_URL: ${{ secrets.BMD_DECKLINK_SDK_ZIP_URL }}
           NDI_SDK_URL: ${{ secrets.NDI_SDK_URL }}
         run: |
+          set -o pipefail
           mkdir -p out
+          mkdir -p out/logs
           BMD_E=""; NDI_E=""
           [ -n "$BMD_DECKLINK_SDK_ZIP_URL" ] && BMD_E="-e BMD_DECKLINK_SDK_ZIP_URL=$BMD_DECKLINK_SDK_ZIP_URL"
           [ -n "$NDI_SDK_URL" ] && NDI_E="-e NDI_SDK_URL=$NDI_SDK_URL"
@@ -257,7 +279,15 @@ jobs:
             -v "${{ github.workspace }}/openrv-build-cache-ubuntu:/home/rv/openrv-build-cache" \
             -v "${{ github.workspace }}/out:/out" \
             openrv-build-ubuntu \
-            /ci/build_in_container.sh
+            /ci/build_in_container.sh 2>&1 | tee out/logs/build-linux-ubuntu22.04.log
+
+      - name: Upload Ubuntu logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-ubuntu-logs
+          if-no-files-found: warn
+          path: out/logs/**
 
       - name: Save OpenRV build cache (Ubuntu 22.04)
         if: always()
@@ -463,6 +493,17 @@ jobs:
           path: C:\OpenRV\_build
           key: openrv-windows-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-${{ hashFiles('ci/windows/build_windows.ps1') }}-${{ hashFiles('ci/windows/ffmpeg_windows_patched.cmake') }}-${{ github.run_id }}
 
+      - name: Upload Windows build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build-logs
+          if-no-files-found: warn
+          path: |
+            C:\OpenRV\_build_logs\*.log
+            C:\OpenRV\_build\**\*.log
+            C:\OpenRV\_build\**\config.log
+
       - name: Package OpenRV (Windows)
         run: .\ci\windows\package_windows.ps1 -OpenRVRoot "C:\OpenRV" -Tag "${{ env.OPENRV_TAG }}" -OutDir dist
         shell: pwsh
@@ -532,6 +573,17 @@ jobs:
       - name: Build OpenRV (Windows) - FFmpeg Only
         run: .\ci\windows\build_windows.ps1 -Phase BuildFFmpeg -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
         shell: pwsh
+
+      - name: Upload Windows FFmpeg debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-ffmpeg-build-logs
+          if-no-files-found: warn
+          path: |
+            C:\OpenRV\_build_logs\*.log
+            C:\OpenRV\_build\**\*.log
+            C:\OpenRV\_build\**\config.log
 
   release:
     name: Create Release
