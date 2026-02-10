@@ -375,27 +375,33 @@ IF(RV_TARGET_WINDOWS)
   SET(RV_FFMPEG_EXTRA_LIBPATH_OPTIONS "${_rv_ffmpeg_extra_libpath_options_sanitized}")
 ENDIF()
 
-SET(_ffmpeg_preprocess_pkg_config_path
-    $ENV{PKG_CONFIG_PATH}
-)
-LIST(APPEND _ffmpeg_preprocess_pkg_config_path "${RV_DEPS_DAVID_LIB_DIR}/pkgconfig")
 IF(RV_TARGET_WINDOWS)
+  # Do not inherit runner/MSYS pkg-config paths on Windows.
+  # Restrict pkg-config to OpenRV dependency outputs only.
+  SET(_ffmpeg_pkg_config_path
+      "${RV_DEPS_DAVID_LIB_DIR}/pkgconfig"
+      "${RV_DEPS_BASE_DIR}/RV_DEPS_OPENSSL/install/lib"
+      "${RV_DEPS_BASE_DIR}/RV_DEPS_OPENSSL/install/lib/pkgconfig"
+      "${RV_DEPS_BASE_DIR}/RV_DEPS_ZLIB/install/lib/pkgconfig"
+  )
   FOREACH(
     _ffmpeg_pkg_config_path_element IN
-    LISTS _ffmpeg_preprocess_pkg_config_path
+    LISTS _ffmpeg_pkg_config_path
   )
-    # Changing path start from "c:/..." to "/c/..." and replacing all backslashes with slashes since PkgConfig wants a linux path
+    # Convert windows path to MSYS-style path.
     STRING(REPLACE "\\" "/" _ffmpeg_pkg_config_path_element "${_ffmpeg_pkg_config_path_element}")
     STRING(REPLACE ":" "" _ffmpeg_pkg_config_path_element "${_ffmpeg_pkg_config_path_element}")
     STRING(FIND ${_ffmpeg_pkg_config_path_element} / _ffmpeg_first_slash_index)
     IF(_ffmpeg_first_slash_index GREATER 0)
       STRING(PREPEND _ffmpeg_pkg_config_path_element "/")
     ENDIF()
-    LIST(APPEND _ffmpeg_pkg_config_path ${_ffmpeg_pkg_config_path_element})
+    LIST(APPEND _ffmpeg_pkg_config_path_msys ${_ffmpeg_pkg_config_path_element})
   ENDFOREACH()
+  SET(_ffmpeg_pkg_config_path ${_ffmpeg_pkg_config_path_msys})
 ELSE()
   SET(_ffmpeg_pkg_config_path
-      ${_ffmpeg_preprocess_pkg_config_path}
+      $ENV{PKG_CONFIG_PATH}
+      "${RV_DEPS_DAVID_LIB_DIR}/pkgconfig"
   )
 ENDIF()
 LIST(JOIN _ffmpeg_pkg_config_path ":" _ffmpeg_pkg_config_path)
@@ -408,6 +414,8 @@ SET(_ffmpeg_configure_env
     "PKG_CONFIG_PATH=${_ffmpeg_pkg_config_path}"
 )
 IF(RV_TARGET_WINDOWS)
+  # Force pkg-config to only use dependency-specific dirs above.
+  LIST(APPEND _ffmpeg_configure_env "PKG_CONFIG_LIBDIR=${_ffmpeg_pkg_config_path}" "PKG_CONFIG_DIR=")
   LIST(APPEND _ffmpeg_configure_env "CL=" "MSYS2_ARG_CONV_EXCL=/FS")
 ENDIF()
 
