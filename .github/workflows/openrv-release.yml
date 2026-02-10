@@ -466,9 +466,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: C:\OpenRV\_build
-          key: openrv-windows-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-${{ hashFiles('ci/windows/build_windows.ps1') }}-${{ hashFiles('ci/windows/ffmpeg_windows_patched.cmake') }}-${{ github.run_id }}
+          key: openrv-windows-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-${{ hashFiles('ci/windows/build_windows.ps1') }}-${{ hashFiles('ci/windows/ffmpeg_windows_patched.cmake') }}-${{ hashFiles('ci/windows/patch_ffmpeg.ps1') }}-${{ github.run_id }}
           restore-keys: |
-            openrv-windows-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-${{ hashFiles('ci/windows/build_windows.ps1') }}-${{ hashFiles('ci/windows/ffmpeg_windows_patched.cmake') }}-
+            openrv-windows-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-${{ hashFiles('ci/windows/build_windows.ps1') }}-${{ hashFiles('ci/windows/ffmpeg_windows_patched.cmake') }}-${{ hashFiles('ci/windows/patch_ffmpeg.ps1') }}-
 
       - name: Build OpenRV (Windows) - Configure
         run: .\ci\windows\build_windows.ps1 -Phase Configure -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV" -BMDDeckLinkSdkZipPath "${{ env.BMD_PATH }}" -NDISdkRoot "${{ env.NDI_ROOT }}"
@@ -491,7 +491,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: C:\OpenRV\_build
-          key: openrv-windows-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-${{ hashFiles('ci/windows/build_windows.ps1') }}-${{ hashFiles('ci/windows/ffmpeg_windows_patched.cmake') }}-${{ github.run_id }}
+          key: openrv-windows-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-${{ hashFiles('ci/windows/build_windows.ps1') }}-${{ hashFiles('ci/windows/ffmpeg_windows_patched.cmake') }}-${{ hashFiles('ci/windows/patch_ffmpeg.ps1') }}-${{ github.run_id }}
 
       - name: Upload Windows build logs
         if: always()
