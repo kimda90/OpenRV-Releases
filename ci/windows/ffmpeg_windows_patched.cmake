@@ -402,6 +402,15 @@ LIST(JOIN _ffmpeg_pkg_config_path ":" _ffmpeg_pkg_config_path)
 
 SEPARATE_ARGUMENTS(RV_FFMPEG_PATCH_COMMAND_STEP)
 
+# FFmpeg configure runs under MSYS bash. If CL is set to "/FS" globally, MSYS may
+# rewrite it to "C:/msys64/FS", which then breaks cl.exe probe builds.
+SET(_ffmpeg_configure_env
+    "PKG_CONFIG_PATH=${_ffmpeg_pkg_config_path}"
+)
+IF(RV_TARGET_WINDOWS)
+  LIST(APPEND _ffmpeg_configure_env "CL=" "MSYS2_ARG_CONV_EXCL=/FS")
+ENDIF()
+
 EXTERNALPROJECT_ADD(
   ${_target}
   DEPENDS ${RV_FFMPEG_DEPENDS}
@@ -415,7 +424,7 @@ EXTERNALPROJECT_ADD(
   # [PATCHED] Execute our PowerShell shim to fix CRLF issues before running the original patch steps
   PATCH_COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "@FFMPEG_PATCH_SHIM@" COMMAND ${RV_FFMPEG_PATCH_COMMAND_STEP}
   CONFIGURE_COMMAND
-    ${CMAKE_COMMAND} -E env "PKG_CONFIG_PATH=${_ffmpeg_pkg_config_path}" ${_configure_command} --prefix=${_install_dir} ${RV_FFMPEG_COMMON_CONFIG_OPTIONS}
+    ${CMAKE_COMMAND} -E env ${_ffmpeg_configure_env} ${_configure_command} --prefix=${_install_dir} ${RV_FFMPEG_COMMON_CONFIG_OPTIONS}
     ${RV_FFMPEG_CONFIG_OPTIONS} ${RV_FFMPEG_EXTRA_C_OPTIONS} ${RV_FFMPEG_EXTRA_LIBPATH_OPTIONS} ${RV_FFMPEG_EXTERNAL_LIBS}
   BUILD_COMMAND ${_make_command} -j${_cpu_count}
   INSTALL_COMMAND ${_make_command} install
