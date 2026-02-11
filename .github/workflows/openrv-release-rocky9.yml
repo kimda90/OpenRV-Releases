@@ -1,0 +1,153 @@
+name: OpenRV Release - Rocky 9
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  OPENRV_TAG: ${{ github.ref_name }}
+  OPENRV_REPO: https://github.com/AcademySoftwareFoundation/OpenRV.git
+
+jobs:
+  linux-rocky9:
+    name: Linux (Rocky 9)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Aggressive Disk Cleanup (Ubuntu)
+        run: |
+          set -euxo pipefail
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /usr/local/.ghcup || true
+          sudo rm -rf /usr/local/lib/android || true
+          sudo rm -rf /usr/share/swift || true
+          sudo rm -rf /opt/hostedtoolcache/CodeQL || true
+          docker system prune -af --volumes || true
+          df -h
+
+      - name: Clone OpenRV
+        run: |
+          git clone --depth 1 --branch "${{ env.OPENRV_TAG }}" "${{ env.OPENRV_REPO }}" openrv-src
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build vanilla Docker image (upstream Rocky 9 Dockerfile)
+        uses: docker/build-push-action@v6
+        with:
+          context: openrv-src
+          file: openrv-src/dockerfiles/Dockerfile.Linux-Rocky9-CY2024
+          load: true
+          tags: openrv-rocky9-base
+          push: false
+
+      - name: Build extended Docker image (vanilla + GL/devel packages)
+        run: docker build -f ci/linux/Dockerfile.rocky9-cy2024 -t openrv-build-rocky9 .
+
+      - name: Reclaim Space Before Build (Rocky 9)
+        run: |
+          set -euxo pipefail
+          rm -rf openrv-src
+          docker image rm openrv-rocky9-base || true
+          docker builder prune -af || true
+          docker system df || true
+          df -h
+
+      - name: Run OpenRV build (Rocky 9)
+        env:
+          BMD_DECKLINK_SDK_ZIP_URL: ${{ secrets.BMD_DECKLINK_SDK_ZIP_URL }}
+          NDI_SDK_URL: ${{ secrets.NDI_SDK_URL }}
+        run: |
+          set -o pipefail
+          mkdir -p out
+          mkdir -p out/logs
+          BMD_E=""; NDI_E=""
+          [ -n "$BMD_DECKLINK_SDK_ZIP_URL" ] && BMD_E="-e BMD_DECKLINK_SDK_ZIP_URL=$BMD_DECKLINK_SDK_ZIP_URL"
+          [ -n "$NDI_SDK_URL" ] && NDI_E="-e NDI_SDK_URL=$NDI_SDK_URL"
+          docker run --rm \
+            -e OPENRV_TAG="${{ env.OPENRV_TAG }}" \
+            -e OPENRV_REPO="${{ env.OPENRV_REPO }}" \
+            -e DISTRO_SUFFIX=linux-rocky9 \
+            $BMD_E $NDI_E \
+            -v "${{ github.workspace }}/ci/linux:/ci:ro" \
+            -v "${{ github.workspace }}/out:/out" \
+            openrv-build-rocky9 \
+            bash /ci/build_in_container.sh 2>&1 | tee out/logs/build-linux-rocky9.log
+
+      - name: Upload Rocky9 logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-rocky9-logs
+          if-no-files-found: warn
+          path: out/logs/**
+
+      - name: Upload Rocky9 artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-rocky9
+          path: out/OpenRV-${{ env.OPENRV_TAG }}-linux-rocky9-x86_64.tar.gz
+
+      - name: Generate Release Body From Upstream OpenRV Commit
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf openrv-meta
+          git init openrv-meta
+          cd openrv-meta
+          git remote add origin "${{ env.OPENRV_REPO }}"
+
+          SHA="$(git ls-remote origin "refs/tags/${{ env.OPENRV_TAG }}^{}" | cut -f1)"
+          if [[ -z "$SHA" ]]; then
+            SHA="$(git ls-remote origin "refs/tags/${{ env.OPENRV_TAG }}" | cut -f1)"
+          fi
+          if [[ -z "$SHA" ]]; then
+            echo "ERROR: Could not resolve upstream tag '${{ env.OPENRV_TAG }}' in ${{ env.OPENRV_REPO }}"
+            exit 1
+          fi
+
+          git fetch --depth 1 origin "$SHA"
+          SUBJECT="$(git show -s --format=%s "$SHA")"
+          BODY="$(git show -s --format=%b "$SHA")"
+          cd ..
+
+          {
+            echo "Upstream OpenRV commit for \`${{ env.OPENRV_TAG }}\`:"
+            echo "\`$SHA\`"
+            echo
+            echo "$SUBJECT"
+            echo
+            echo "$BODY"
+          } > release-body.md
+
+      - name: Publish Rocky9 Release Asset
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: OpenRV ${{ github.ref_name }}
+          draft: false
+          overwrite_files: true
+          body_path: release-body.md
+          files: out/OpenRV-${{ env.OPENRV_TAG }}-linux-rocky9-x86_64.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

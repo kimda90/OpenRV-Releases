@@ -1,0 +1,211 @@
+name: OpenRV Release - Windows
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  OPENRV_TAG: ${{ github.ref_name }}
+  OPENRV_REPO: https://github.com/AcademySoftwareFoundation/OpenRV.git
+
+jobs:
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free Disk Space (Windows)
+        shell: pwsh
+        run: |
+          Write-Host "=== Disk before cleanup ==="
+          Get-PSDrive -Name C | Format-List
+
+          if (Test-Path "C:\Android\android-sdk") {
+            Write-Host "Removing C:\Android\android-sdk ..."
+            Remove-Item -Recurse -Force "C:\Android\android-sdk" -ErrorAction SilentlyContinue
+          }
+
+          if (Get-Command docker -ErrorAction SilentlyContinue) {
+            Write-Host "Pruning Docker..."
+            docker system prune -af 2>$null
+          }
+
+          $tempPaths = @($env:TEMP, "C:\Users\runneradmin\AppData\Local\Temp")
+          foreach ($p in $tempPaths) {
+            if (Test-Path $p) {
+              Get-ChildItem $p -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          }
+
+          if (Test-Path "C:\hostedtoolcache") {
+            Write-Host "Removing C:\hostedtoolcache ..."
+            Remove-Item -Recurse -Force "C:\hostedtoolcache" -ErrorAction SilentlyContinue
+          }
+
+          if (Test-Path "C:\ProgramData\chocolatey\cache") {
+            Remove-Item -Recurse -Force "C:\ProgramData\chocolatey\cache" -ErrorAction SilentlyContinue
+          }
+
+          Write-Host "=== Disk after cleanup ==="
+          Get-PSDrive -Name C | Format-List
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Qt 6.5.3
+        run: |
+          pip install aqtinstall
+          aqt install-qt windows desktop 6.5.3 win64_msvc2019_64 -O C:\Qt -m qtwebchannel qtwebengine qtwebsockets qtmultimedia qtpositioning
+        env:
+          QT_HOME: C:\Qt\6.5.3\msvc2019_64
+
+      - name: Install Strawberry Perl
+        run: choco install strawberryperl -y
+
+      - name: Install Rust
+        run: |
+          Invoke-WebRequest -Uri https://win.rustup.rs/x86_64 -OutFile rustup-init.exe -UseBasicParsing
+          .\rustup-init.exe -y
+        shell: pwsh
+
+      - name: Install MSYS2 and build tools
+        run: |
+          choco install msys2 -y
+          $env:Path = "C:\msys64\usr\bin;$env:Path"
+          bash -lc "pacman -Sy --noconfirm --needed mingw-w64-x86_64-autotools mingw-w64-x86_64-glew mingw-w64-x86_64-libarchive mingw-w64-x86_64-make mingw-w64-x86_64-meson mingw-w64-x86_64-toolchain autoconf automake bison flex git libtool nasm p7zip patch unzip zip"
+
+      - name: Setup MSVC (nmake for OpenSSL build)
+        uses: microsoft/setup-msbuild@v2
+        with:
+          vs-version: '[17.0, 18.0)'
+
+      - name: Setup MSVC developer environment (cl, link, INCLUDE, LIB for Meson/deps)
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Download optional SDKs
+        id: sdks
+        env:
+          BMD_DECKLINK_SDK_ZIP_URL: ${{ secrets.BMD_DECKLINK_SDK_ZIP_URL }}
+          NDI_SDK_URL: ${{ secrets.NDI_SDK_URL }}
+        run: |
+          $bmdPath = ''
+          $ndiRoot = ''
+          if ($env:BMD_DECKLINK_SDK_ZIP_URL) {
+            Write-Host "Downloading Blackmagic DeckLink SDK..."
+            $bmdPath = "$env:RUNNER_TEMP\BMD_DeckLink_SDK.zip"
+            Invoke-WebRequest -Uri $env:BMD_DECKLINK_SDK_ZIP_URL -OutFile $bmdPath -UseBasicParsing
+          }
+          if ($env:NDI_SDK_URL) {
+            Write-Host "Downloading NDI SDK..."
+            $ndiZip = "$env:RUNNER_TEMP\NDI_SDK.zip"
+            Invoke-WebRequest -Uri $env:NDI_SDK_URL -OutFile $ndiZip -UseBasicParsing
+            $ndiRoot = "$env:RUNNER_TEMP\ndi-sdk"
+            New-Item -ItemType Directory -Path $ndiRoot -Force | Out-Null
+            Expand-Archive -Path $ndiZip -DestinationPath $ndiRoot -Force
+            $children = Get-ChildItem $ndiRoot -Directory
+            if ($children.Count -eq 1) { $ndiRoot = $children[0].FullName }
+          }
+          "BMD_PATH=$bmdPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "NDI_ROOT=$ndiRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+        shell: pwsh
+
+      - name: Build OpenRV (Windows) - Clone
+        run: .\ci\windows\build_windows.ps1 -Phase Clone -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV" -BMDDeckLinkSdkZipPath "${{ env.BMD_PATH }}" -NDISdkRoot "${{ env.NDI_ROOT }}"
+        shell: pwsh
+
+      - name: Build OpenRV (Windows) - Python venv
+        run: .\ci\windows\build_windows.ps1 -Phase Venv -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
+        shell: pwsh
+
+      - name: Build OpenRV (Windows) - Configure
+        run: .\ci\windows\build_windows.ps1 -Phase Configure -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV" -BMDDeckLinkSdkZipPath "${{ env.BMD_PATH }}" -NDISdkRoot "${{ env.NDI_ROOT }}"
+        shell: pwsh
+
+      - name: Build OpenRV (Windows) - Dependencies
+        run: .\ci\windows\build_windows.ps1 -Phase BuildDependencies -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
+        shell: pwsh
+
+      - name: Build OpenRV (Windows) - Main executable
+        run: .\ci\windows\build_windows.ps1 -Phase BuildMain -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
+        shell: pwsh
+
+      - name: Build OpenRV (Windows) - Verify
+        run: .\ci\windows\build_windows.ps1 -Phase Verify -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
+        shell: pwsh
+
+      - name: Upload Windows build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build-logs
+          if-no-files-found: warn
+          path: |
+            C:\OpenRV\_build_logs\*.log
+            C:\OpenRV\_build\**\*.log
+            C:\OpenRV\_build\**\config.log
+
+      - name: Package OpenRV (Windows)
+        if: success()
+        run: .\ci\windows\package_windows.ps1 -OpenRVRoot "C:\OpenRV" -Tag "${{ env.OPENRV_TAG }}" -OutDir dist
+        shell: pwsh
+
+      - name: Upload Windows artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/OpenRV-${{ env.OPENRV_TAG }}-windows-x86_64.zip
+
+      - name: Generate Release Body From Upstream OpenRV Commit
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf openrv-meta
+          git init openrv-meta
+          cd openrv-meta
+          git remote add origin "${{ env.OPENRV_REPO }}"
+
+          SHA="$(git ls-remote origin "refs/tags/${{ env.OPENRV_TAG }}^{}" | cut -f1)"
+          if [[ -z "$SHA" ]]; then
+            SHA="$(git ls-remote origin "refs/tags/${{ env.OPENRV_TAG }}" | cut -f1)"
+          fi
+          if [[ -z "$SHA" ]]; then
+            echo "ERROR: Could not resolve upstream tag '${{ env.OPENRV_TAG }}' in ${{ env.OPENRV_REPO }}"
+            exit 1
+          fi
+
+          git fetch --depth 1 origin "$SHA"
+          SUBJECT="$(git show -s --format=%s "$SHA")"
+          BODY="$(git show -s --format=%b "$SHA")"
+          cd ..
+
+          {
+            echo "Upstream OpenRV commit for \`${{ env.OPENRV_TAG }}\`:"
+            echo "\`$SHA\`"
+            echo
+            echo "$SUBJECT"
+            echo
+            echo "$BODY"
+          } > release-body.md
+
+      - name: Publish Windows Release Asset
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: OpenRV ${{ github.ref_name }}
+          draft: false
+          overwrite_files: true
+          body_path: release-body.md
+          files: dist/OpenRV-${{ env.OPENRV_TAG }}-windows-x86_64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
