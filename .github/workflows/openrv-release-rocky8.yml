@@ -105,7 +105,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: linux-rocky8
-          path: out/OpenRV-${{ env.OPENRV_TAG }}-linux-rocky8-x86_64.tar.gz
+          path: out/OpenRV-${{ env.OPENRV_TAG }}-linux-rocky8-x86_64.tar.xz
 
       - name: Generate Release Body From Upstream OpenRV Commit
         if: success()
@@ -142,13 +142,60 @@ jobs:
 
       - name: Publish Rocky8 Release Asset
         if: success()
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: OpenRV ${{ github.ref_name }}
-          draft: false
-          overwrite_files: true
-          body_path: release-body.md
-          files: out/OpenRV-${{ env.OPENRV_TAG }}-linux-rocky8-x86_64.tar.gz
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ github.ref_name }}"
+          TITLE="OpenRV ${TAG}"
+          ASSET="out/OpenRV-${{ env.OPENRV_TAG }}-linux-rocky8-x86_64.tar.xz"
+          MAX_RELEASE_ASSET_BYTES=2147483648
+          SPLIT_CHUNK_SIZE=1900m
+
+          # Ensure the release exists; ignore the race if another workflow creates it first.
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "$TITLE" \
+              --notes-file release-body.md \
+              --verify-tag || true
+          fi
+
+          upload_with_retry() {
+            local file="$1"
+            for attempt in 1 2 3; do
+              if gh release upload "$TAG" "$file" --clobber; then
+                return 0
+              fi
+              if [ "$attempt" -eq 3 ]; then
+                echo "ERROR: failed to upload $file after $attempt attempts"
+                return 1
+              fi
+              sleep $((attempt * 10))
+            done
+          }
+
+          ASSET_SIZE="$(stat -c%s "$ASSET")"
+          echo "Asset size: ${ASSET_SIZE} bytes"
+
+          if [ "$ASSET_SIZE" -le "$MAX_RELEASE_ASSET_BYTES" ]; then
+            upload_with_retry "$ASSET"
+            exit 0
+          fi
+
+          echo "Asset exceeds GitHub Release limit (${MAX_RELEASE_ASSET_BYTES} bytes). Splitting into parts..."
+          split -b "$SPLIT_CHUNK_SIZE" -d -a 3 "$ASSET" "${ASSET}.part."
+          sha256sum "${ASSET}.part."* > "${ASSET}.parts.sha256"
+          cat > "${ASSET}.parts.README.txt" <<EOF
+          This Rocky 8 artifact exceeded GitHub's per-asset 2 GiB limit and was uploaded in parts.
+
+          Reconstruct:
+            cat $(basename "${ASSET}").part.* > $(basename "${ASSET}")
+            sha256sum -c $(basename "${ASSET}").parts.sha256
+          EOF
+
+          upload_with_retry "${ASSET}.parts.sha256"
+          upload_with_retry "${ASSET}.parts.README.txt"
+          for part in "${ASSET}.part."*; do
+            upload_with_retry "$part"
+          done

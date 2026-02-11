@@ -343,9 +343,29 @@ echo "========================================"
 
 # Package
 echo "[6/6] Packaging..."
-ARCHIVE_NAME="OpenRV-${OPENRV_TAG}-${DISTRO_SUFFIX}-x86_64.tar.gz"
+ARCHIVE_FORMAT="${OPENRV_ARCHIVE_FORMAT:-xz}"
 mkdir -p "$OUT_DIR"
-tar -C _build -czvf "${OUT_DIR}/${ARCHIVE_NAME}" stage
+
+case "$ARCHIVE_FORMAT" in
+    xz)
+        if command -v xz >/dev/null 2>&1; then
+            ARCHIVE_NAME="OpenRV-${OPENRV_TAG}-${DISTRO_SUFFIX}-x86_64.tar.xz"
+            tar -C _build -cJf "${OUT_DIR}/${ARCHIVE_NAME}" stage
+        else
+            echo "WARNING: xz not found; falling back to gzip packaging."
+            ARCHIVE_NAME="OpenRV-${OPENRV_TAG}-${DISTRO_SUFFIX}-x86_64.tar.gz"
+            tar -C _build -czf "${OUT_DIR}/${ARCHIVE_NAME}" stage
+        fi
+        ;;
+    gz|gzip)
+        ARCHIVE_NAME="OpenRV-${OPENRV_TAG}-${DISTRO_SUFFIX}-x86_64.tar.gz"
+        tar -C _build -czf "${OUT_DIR}/${ARCHIVE_NAME}" stage
+        ;;
+    *)
+        echo "ERROR: unsupported OPENRV_ARCHIVE_FORMAT='${ARCHIVE_FORMAT}' (supported: xz, gz)"
+        exit 1
+        ;;
+esac
 echo ""
 echo "========================================"
 echo "PACKAGING COMPLETE"

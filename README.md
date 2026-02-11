@@ -17,8 +17,8 @@ CI/CD that builds [Open RV](https://github.com/AcademySoftwareFoundation/OpenRV)
 - **GitHub Releases**: For the tag you pushed (e.g. [Releases](https://github.com/YOUR_ORG/OpenRV-builds/releases)).
 - **Artifact names**:
   - `OpenRV-<TAG>-windows-x86_64.zip`
-  - `OpenRV-<TAG>-linux-rocky9-x86_64.tar.gz`
-  - `OpenRV-<TAG>-linux-ubuntu22.04-x86_64.tar.gz` (if the Ubuntu job succeeded)
+  - `OpenRV-<TAG>-linux-rocky9-x86_64.tar.xz`
+  - `OpenRV-<TAG>-linux-ubuntu22.04-x86_64.tar.xz` (if the Ubuntu job succeeded)
 
 Archive contents are the contents of OpenRV’s `_build/stage/` directory (e.g. `app/bin/rv`, libraries, and support files).
 
@@ -37,7 +37,8 @@ Archive contents are the contents of OpenRV’s `_build/stage/` directory (e.g. 
      -v "$(pwd)/out:/out" \
      openrv-build-rocky9
    ```
-2. The tarball is written to `out/OpenRV-<TAG>-linux-rocky9-x86_64.tar.gz`.
+2. The tarball is written to `out/OpenRV-<TAG>-linux-rocky9-x86_64.tar.xz`.
+   - Set `OPENRV_ARCHIVE_FORMAT=gz` to use gzip instead (faster, larger files).
 
 ### Linux (Ubuntu 22.04, experimental)
 
