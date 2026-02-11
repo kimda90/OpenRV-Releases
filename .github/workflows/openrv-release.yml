@@ -32,24 +32,7 @@ jobs:
           docker-images: true
           swap-storage: true
 
-      # Resolve tag to commit SHA so cache key changes when the tag is overwritten
-      - name: Get OpenRV tag commit SHA
-        id: openrv-sha
-        run: |
-          SHA=$(git ls-remote "${{ env.OPENRV_REPO }}" "refs/tags/${{ env.OPENRV_TAG }}^{}" 2>/dev/null | cut -f1)
-          [ -z "$SHA" ] && SHA=$(git ls-remote "${{ env.OPENRV_REPO }}" "refs/tags/${{ env.OPENRV_TAG }}" 2>/dev/null | cut -f1)
-          echo "sha=${SHA}" >> $GITHUB_OUTPUT
-          echo "Resolved ${{ env.OPENRV_TAG }} to ${SHA}"
-
-      - name: Restore OpenRV clone (Dockerfile context)
-        id: openrv-cache
-        uses: actions/cache@v4
-        with:
-          path: openrv-src
-          key: openrv-rocky9-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}
-
       - name: Clone OpenRV
-        if: steps.openrv-cache.outputs.cache-hit != 'true'
         run: |
           git clone --depth 1 --branch "${{ env.OPENRV_TAG }}" "${{ env.OPENRV_REPO }}" openrv-src
 
@@ -63,8 +46,6 @@ jobs:
           file: openrv-src/dockerfiles/Dockerfile.Linux-Rocky9-CY2024
           load: true
           tags: openrv-rocky9-base
-          cache-from: type=gha,scope=rocky9
-          cache-to: type=gha,mode=max,scope=rocky9
           push: false
 
       # Use host Docker (not Buildx) so FROM openrv-rocky9-base resolves from the image loaded in the previous step
@@ -125,23 +106,7 @@ jobs:
           docker-images: true
           swap-storage: true
 
-      - name: Get OpenRV tag commit SHA
-        id: openrv-sha
-        run: |
-          SHA=$(git ls-remote "${{ env.OPENRV_REPO }}" "refs/tags/${{ env.OPENRV_TAG }}^{}" 2>/dev/null | cut -f1)
-          [ -z "$SHA" ] && SHA=$(git ls-remote "${{ env.OPENRV_REPO }}" "refs/tags/${{ env.OPENRV_TAG }}" 2>/dev/null | cut -f1)
-          echo "sha=${SHA}" >> $GITHUB_OUTPUT
-          echo "Resolved ${{ env.OPENRV_TAG }} to ${SHA}"
-
-      - name: Restore OpenRV clone (Dockerfile context)
-        id: openrv-cache
-        uses: actions/cache@v4
-        with:
-          path: openrv-src
-          key: openrv-rocky8-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}
-
       - name: Clone OpenRV
-        if: steps.openrv-cache.outputs.cache-hit != 'true'
         run: |
           git clone --depth 1 --branch "${{ env.OPENRV_TAG }}" "${{ env.OPENRV_REPO }}" openrv-src
 
@@ -155,8 +120,6 @@ jobs:
           file: openrv-src/dockerfiles/Dockerfile.Linux-Rocky8
           load: true
           tags: openrv-rocky8-base
-          cache-from: type=gha,scope=rocky8
-          cache-to: type=gha,mode=max,scope=rocky8
           push: false
 
       # Use host Docker (not Buildx) so FROM openrv-rocky8-base resolves from the image loaded in the previous step
@@ -218,15 +181,6 @@ jobs:
           docker-images: true
           swap-storage: true
 
-      # Resolve tag to commit SHA so cache key changes when the tag is overwritten
-      - name: Get OpenRV tag commit SHA
-        id: openrv-sha
-        run: |
-          SHA=$(git ls-remote "${{ env.OPENRV_REPO }}" "refs/tags/${{ env.OPENRV_TAG }}^{}" 2>/dev/null | cut -f1)
-          [ -z "$SHA" ] && SHA=$(git ls-remote "${{ env.OPENRV_REPO }}" "refs/tags/${{ env.OPENRV_TAG }}" 2>/dev/null | cut -f1)
-          echo "sha=${SHA}" >> $GITHUB_OUTPUT
-          echo "Resolved ${{ env.OPENRV_TAG }} to ${SHA}"
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -237,17 +191,7 @@ jobs:
           file: ci/linux/Dockerfile.ubuntu22.04
           load: true
           tags: openrv-build-ubuntu
-          cache-from: type=gha,scope=ubuntu
-          cache-to: type=gha,mode=max,scope=ubuntu
           push: false
-
-      - name: Restore OpenRV build cache (Ubuntu 22.04)
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ github.workspace }}/openrv-build-cache-ubuntu
-          key: openrv-ubuntu-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-${{ github.run_id }}
-          restore-keys: |
-            openrv-ubuntu-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-
 
       - name: Prepare build cache directory (Ubuntu 22.04)
         run: |
@@ -285,13 +229,6 @@ jobs:
           name: linux-ubuntu-logs
           if-no-files-found: warn
           path: out/logs/**
-
-      - name: Save OpenRV build cache (Ubuntu 22.04)
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ github.workspace }}/openrv-build-cache-ubuntu
-          key: openrv-ubuntu-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-${{ github.run_id }}
 
       - name: Upload Ubuntu artifact
         if: success()
@@ -337,79 +274,28 @@ jobs:
           Write-Host "=== Disk after cleanup ==="
           Get-PSDrive -Name C | Format-List
 
-      # Resolve OpenRV tag to commit SHA for cache key (cache invalidates when tag is overwritten)
-      - name: Get OpenRV tag commit SHA
-        id: openrv-sha
-        run: |
-          SHA=$(git ls-remote "${{ env.OPENRV_REPO }}" "refs/tags/${{ env.OPENRV_TAG }}^{}" 2>/dev/null | cut -f1)
-          [ -z "$SHA" ] && SHA=$(git ls-remote "${{ env.OPENRV_REPO }}" "refs/tags/${{ env.OPENRV_TAG }}" 2>/dev/null | cut -f1)
-          echo "sha=${SHA}" >> $GITHUB_OUTPUT
-          echo "OpenRV tag ${{ env.OPENRV_TAG }} -> ${SHA}"
-        shell: bash
-
-      - name: Clone OpenRV (for pip cache key)
-        run: |
-          git clone --depth 1 --branch "${{ env.OPENRV_TAG }}" "${{ env.OPENRV_REPO }}" openrv-src
-        shell: bash
-
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
-          cache-dependency-path: openrv-src/requirements.txt
-
-      - name: Cache Qt
-        id: cache-qt
-        uses: actions/cache@v4
-        with:
-          path: C:\Qt
-          key: openrv-qt-6.5.3-msvc2019
 
       - name: Install Qt 6.5.3
-        if: steps.cache-qt.outputs.cache-hit != 'true'
         run: |
           pip install aqtinstall
           aqt install-qt windows desktop 6.5.3 win64_msvc2019_64 -O C:\Qt -m qtwebchannel qtwebengine qtwebsockets qtmultimedia qtpositioning
         env:
           QT_HOME: C:\Qt\6.5.3\msvc2019_64
 
-      - name: Cache Strawberry Perl
-        id: cache-perl
-        uses: actions/cache@v4
-        with:
-          path: C:\Strawberry
-          key: openrv-strawberryperl
-
       - name: Install Strawberry Perl
-        if: steps.cache-perl.outputs.cache-hit != 'true'
         run: choco install strawberryperl -y
 
-      - name: Cache Rust
-        id: cache-rust
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ env.USERPROFILE }}\.cargo
-            ${{ env.USERPROFILE }}\.rustup
-          key: openrv-rust
-
       - name: Install Rust
-        if: steps.cache-rust.outputs.cache-hit != 'true'
         run: |
           Invoke-WebRequest -Uri https://win.rustup.rs/x86_64 -OutFile rustup-init.exe -UseBasicParsing
           .\rustup-init.exe -y
         shell: pwsh
 
-      - name: Cache MSYS2
-        id: cache-msys2
-        uses: actions/cache@v4
-        with:
-          path: C:\msys64
-          key: openrv-msys2-v1
-
       - name: Install MSYS2 and build tools
-        if: steps.cache-msys2.outputs.cache-hit != 'true'
         run: |
           choco install msys2 -y
           $env:Path = "C:\msys64\usr\bin;$env:Path"
@@ -459,14 +345,6 @@ jobs:
         run: .\ci\windows\build_windows.ps1 -Phase Venv -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
         shell: pwsh
 
-      - name: Restore OpenRV build cache (Windows)
-        uses: actions/cache/restore@v4
-        with:
-          path: C:\OpenRV\_build
-          key: openrv-windows-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-${{ hashFiles('ci/windows/build_windows.ps1') }}-${{ hashFiles('ci/windows/ffmpeg_windows_patched.cmake') }}-${{ hashFiles('ci/windows/patch_ffmpeg.ps1') }}-${{ github.run_id }}
-          restore-keys: |
-            openrv-windows-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-${{ hashFiles('ci/windows/build_windows.ps1') }}-${{ hashFiles('ci/windows/ffmpeg_windows_patched.cmake') }}-${{ hashFiles('ci/windows/patch_ffmpeg.ps1') }}-
-
       - name: Build OpenRV (Windows) - Configure
         run: .\ci\windows\build_windows.ps1 -Phase Configure -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV" -BMDDeckLinkSdkZipPath "${{ env.BMD_PATH }}" -NDISdkRoot "${{ env.NDI_ROOT }}"
         shell: pwsh
@@ -482,13 +360,6 @@ jobs:
       - name: Build OpenRV (Windows) - Verify
         run: .\ci\windows\build_windows.ps1 -Phase Verify -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
         shell: pwsh
-
-      - name: Save OpenRV build cache (Windows)
-        if: always() && hashFiles('C:\OpenRV\_build\CMakeCache.txt') != ''
-        uses: actions/cache/save@v4
-        with:
-          path: C:\OpenRV\_build
-          key: openrv-windows-build-${{ env.OPENRV_TAG }}-${{ steps.openrv-sha.outputs.sha }}-${{ hashFiles('ci/windows/build_windows.ps1') }}-${{ hashFiles('ci/windows/ffmpeg_windows_patched.cmake') }}-${{ hashFiles('ci/windows/patch_ffmpeg.ps1') }}-${{ github.run_id }}
 
       - name: Upload Windows build logs
         if: always()
