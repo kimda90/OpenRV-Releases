@@ -434,8 +434,8 @@ EXTERNALPROJECT_ADD(
   CONFIGURE_COMMAND
     ${CMAKE_COMMAND} -E env ${_ffmpeg_configure_env} ${_configure_command} --prefix=${_install_dir} ${RV_FFMPEG_COMMON_CONFIG_OPTIONS}
     ${RV_FFMPEG_CONFIG_OPTIONS} ${RV_FFMPEG_EXTRA_C_OPTIONS} ${RV_FFMPEG_EXTRA_LIBPATH_OPTIONS} ${RV_FFMPEG_EXTERNAL_LIBS}
-  BUILD_COMMAND ${_make_command} -j${_cpu_count}
-  INSTALL_COMMAND ${_make_command} install
+  BUILD_COMMAND ${CMAKE_COMMAND} -E env "CL=-FS" "MSYS2_ARG_CONV_EXCL=/FS" ${_make_command} -j${_cpu_count}
+  INSTALL_COMMAND ${CMAKE_COMMAND} -E env "CL=-FS" "MSYS2_ARG_CONV_EXCL=/FS" ${_make_command} install
   BUILD_IN_SOURCE TRUE
   BUILD_ALWAYS ${_force_rebuild}
   BUILD_BYPRODUCTS ${_build_byproducts}
