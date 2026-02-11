@@ -17,7 +17,6 @@ jobs:
     name: Linux (Rocky 9)
     runs-on: ubuntu-latest
     continue-on-error: false
-    if: false # DISABLED
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -111,7 +110,6 @@ jobs:
     name: Linux (Rocky 8)
     runs-on: ubuntu-latest
     continue-on-error: false
-    if: false # DISABLED
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -205,7 +203,6 @@ jobs:
     name: Linux (Ubuntu 22.04, experimental)
     runs-on: ubuntu-latest
     continue-on-error: false
-    if: false # DISABLED
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -514,77 +511,6 @@ jobs:
           name: windows
           path: dist/OpenRV-${{ env.OPENRV_TAG }}-windows-x86_64.zip
 
-  windows-ffmpeg-test:
-    name: Windows (FFmpeg Only)
-    runs-on: windows-latest
-    continue-on-error: true
-    if: false
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Free Disk Space (Windows)
-        shell: pwsh
-        run: |
-          if (Test-Path "C:\Android\android-sdk") { Remove-Item -Recurse -Force "C:\Android\android-sdk" -ErrorAction SilentlyContinue }
-          if (Get-Command docker -ErrorAction SilentlyContinue) { docker system prune -af 2>$null }
-
-      - name: Get OpenRV tag commit SHA
-        id: openrv-sha
-        run: |
-          SHA=$(git ls-remote "${{ env.OPENRV_REPO }}" "refs/tags/${{ env.OPENRV_TAG }}^{}" 2>/dev/null | cut -f1)
-          [ -z "$SHA" ] && SHA=$(git ls-remote "${{ env.OPENRV_REPO }}" "refs/tags/${{ env.OPENRV_TAG }}" 2>/dev/null | cut -f1)
-          echo "sha=${SHA}" >> $GITHUB_OUTPUT
-        shell: bash
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-
-      - name: Install Qt 6.5.3
-        run: |
-          pip install aqtinstall
-          aqt install-qt windows desktop 6.5.3 win64_msvc2019_64 -O C:\Qt -m qtwebchannel qtwebengine qtwebsockets qtmultimedia qtpositioning
-        env:
-          QT_HOME: C:\Qt\6.5.3\msvc2019_64
-
-      - name: Install Strawberry Perl
-        run: choco install strawberryperl -y
-
-      - name: Install MSYS2 and build tools
-        run: |
-          choco install msys2 -y
-          $env:Path = "C:\msys64\usr\bin;$env:Path"
-          bash -lc "pacman -Sy --noconfirm --needed mingw-w64-x86_64-toolchain autoconf automake libtool nasm p7zip patch dos2unix"
-
-      - name: Setup MSVC developer environment
-        uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Build OpenRV (Windows) - Clone
-        run: .\ci\windows\build_windows.ps1 -Phase Clone -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
-        shell: pwsh
-
-      - name: Build OpenRV (Windows) - Configure
-        run: .\ci\windows\build_windows.ps1 -Phase Configure -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
-        shell: pwsh
-
-      - name: Build OpenRV (Windows) - FFmpeg Only
-        run: .\ci\windows\build_windows.ps1 -Phase BuildFFmpeg -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
-        shell: pwsh
-
-      - name: Upload Windows FFmpeg debug logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-ffmpeg-build-logs
-          if-no-files-found: warn
-          path: |
-            C:\OpenRV\_build_logs\*.log
-            C:\OpenRV\_build\**\*.log
-            C:\OpenRV\_build\**\config.log
-
   release:
     name: Create Release
     runs-on: ubuntu-latest
@@ -597,12 +523,41 @@ jobs:
         with:
           path: release-artifacts
 
+      - name: Read OpenRV upstream commit message
+        id: upstream-meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init openrv-meta
+          cd openrv-meta
+          git remote add origin "${{ env.OPENRV_REPO }}"
+          git fetch --depth 1 origin "refs/tags/${{ env.OPENRV_TAG }}:refs/tags/${{ env.OPENRV_TAG }}"
+          SHA=$(git rev-list -n 1 "${{ env.OPENRV_TAG }}")
+          SUBJECT=$(git log -1 --format=%s "$SHA")
+          BODY=$(git log -1 --format=%b "$SHA")
+          {
+            echo "sha=$SHA"
+            echo "subject<<EOF"
+            echo "$SUBJECT"
+            echo "EOF"
+            echo "body<<EOF"
+            echo "$BODY"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: OpenRV ${{ github.ref_name }}
           draft: false
+          body: |
+            Upstream OpenRV commit for `${{ env.OPENRV_TAG }}`:
+            `${{ steps.upstream-meta.outputs.sha }}`
+
+            ${{ steps.upstream-meta.outputs.subject }}
+
+            ${{ steps.upstream-meta.outputs.body }}
           files: |
             release-artifacts/linux-rocky9/*
             release-artifacts/linux-rocky8/*
