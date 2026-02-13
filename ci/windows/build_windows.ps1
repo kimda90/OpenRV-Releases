@@ -315,7 +315,7 @@ function Invoke-PhaseConfigure {
         throw "Required patch script not found: $patchScript"
     }
     & $patchScript -WorkDir $WorkDir -EnvInfo $envInfo -PatchShimPath $env:FFMPEG_PATCH_SHIM
-    if ($LASTEXITCODE -ne 0) { throw "Applying v3.1.0 patch set failed." }
+    if (-not $?) { throw "Applying v3.1.0 patch set failed." }
 
     $cmakeExtraArgs = @()
     if ($BMDDeckLinkSdkZipPath -and (Test-Path $BMDDeckLinkSdkZipPath)) {

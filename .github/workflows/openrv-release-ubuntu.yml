@@ -96,6 +96,8 @@ jobs:
           set -o pipefail
           mkdir -p out
           mkdir -p out/logs
+          mkdir -p openrv-build-cache-ubuntu22
+          chmod -R 0777 openrv-build-cache-ubuntu22 || true
           BMD_E=""; NDI_E=""
           [ -n "$BMD_DECKLINK_SDK_ZIP_URL" ] && BMD_E="-e BMD_DECKLINK_SDK_ZIP_URL=$BMD_DECKLINK_SDK_ZIP_URL"
           [ -n "$NDI_SDK_URL" ] && NDI_E="-e NDI_SDK_URL=$NDI_SDK_URL"

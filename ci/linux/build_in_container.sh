@@ -80,12 +80,25 @@ git submodule update --init --recursive
 if [[ -n "${OPENRV_BUILD_CACHE_DIR:-}" ]]; then
     echo "Using build cache dir: ${OPENRV_BUILD_CACHE_DIR}"
     mkdir -p "${OPENRV_BUILD_CACHE_DIR}"
+    if [[ ! -w "${OPENRV_BUILD_CACHE_DIR}" ]]; then
+        echo "WARNING: cache dir is not writable by current user: ${OPENRV_BUILD_CACHE_DIR}"
+        echo "WARNING: falling back to local _build directory for this run."
+        unset OPENRV_BUILD_CACHE_DIR
+    fi
+fi
+
+if [[ -n "${OPENRV_BUILD_CACHE_DIR:-}" ]]; then
     if [[ -L _build ]]; then
         rm -f _build
     elif [[ -d _build ]]; then
         rm -rf _build
     fi
     ln -s "${OPENRV_BUILD_CACHE_DIR}" _build
+else
+    if [[ -L _build ]]; then
+        rm -f _build
+    fi
+    mkdir -p _build
 fi
 
 # Ubuntu: clear CMake and AUTOMOC state so moc paths are regenerated
@@ -117,6 +130,7 @@ echo "[2/6] Applying patch set from ${PATCH_SET_DIR}..."
 apply_required_patch "${PATCH_SET_DIR}/rvcmds_rv_cfg_extra.patch"
 apply_required_patch "${PATCH_SET_DIR}/dav1d_use_git.patch"
 apply_required_patch "${PATCH_SET_DIR}/glew_2_3_0.patch"
+apply_required_patch "${PATCH_SET_DIR}/glew_prebuilt_sources.patch"
 
 # Optional BMD and NDI: download when URLs provided and set CMake args
 echo "[3/6] Processing optional SDKs..."
@@ -229,6 +243,30 @@ rvsetup || {
     echo "ERROR: rvsetup failed" >&2
     exit 1
 }
+
+# Ensure the active build dir is writable for CMake's pkgRedirects.
+# Cached mounts can be partially unwritable when ownership differs across runs.
+_ensure_build_dir_writable() {
+    local dir="$1"
+    mkdir -p "${dir}" 2>/dev/null || return 1
+    mkdir -p "${dir}/CMakeFiles/pkgRedirects" 2>/dev/null || return 1
+    local probe="${dir}/.ci_write_probe_$$"
+    : > "${probe}" 2>/dev/null || return 1
+    rm -f "${probe}" 2>/dev/null || true
+    return 0
+}
+
+if ! _ensure_build_dir_writable "${RV_BUILD_DIR}"; then
+    echo "WARNING: RV_BUILD_DIR is not writable: ${RV_BUILD_DIR}"
+    RV_BUILD_DIR="${RV_HOME}/_build_local"
+    export RV_BUILD_DIR
+    RV_BUILD_DIR_EFFECTIVE="${RV_BUILD_DIR}"
+    echo "WARNING: Falling back to writable build dir: ${RV_BUILD_DIR_EFFECTIVE}"
+    if ! _ensure_build_dir_writable "${RV_BUILD_DIR_EFFECTIVE}"; then
+        echo "ERROR: fallback build dir is also not writable: ${RV_BUILD_DIR_EFFECTIVE}" >&2
+        exit 1
+    fi
+fi
 
 # Configure (so we can build dependencies next)
 echo "Running rvcfg (configure)..."
