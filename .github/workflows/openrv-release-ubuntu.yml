@@ -42,6 +42,31 @@ jobs:
           docker system prune -af --volumes || true
           df -h
 
+      - name: Resolve upstream tag commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG_REF="refs/tags/${{ env.OPENRV_TAG }}"
+          COMMIT_SHA="$(git ls-remote "${{ env.OPENRV_REPO }}" "${TAG_REF}^{}" | cut -f1)"
+          if [[ -z "$COMMIT_SHA" ]]; then
+            COMMIT_SHA="$(git ls-remote "${{ env.OPENRV_REPO }}" "${TAG_REF}" | cut -f1)"
+          fi
+          if [[ -z "$COMMIT_SHA" ]]; then
+            echo "ERROR: could not resolve upstream commit for ${TAG_REF}"
+            exit 1
+          fi
+          echo "UPSTREAM_SHA=${COMMIT_SHA}" >> "$GITHUB_ENV"
+          echo "UPSTREAM_SHA_SHORT=${COMMIT_SHA:0:12}" >> "$GITHUB_ENV"
+
+      - name: Restore Ubuntu build cache (_build)
+        id: restore-ubuntu-build-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: openrv-build-cache-ubuntu22
+          key: openrv-ubuntu22-build-${{ env.OPENRV_TAG }}-${{ env.UPSTREAM_SHA_SHORT }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            openrv-ubuntu22-build-${{ env.OPENRV_TAG }}-${{ env.UPSTREAM_SHA_SHORT }}-
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -53,6 +78,8 @@ jobs:
           load: true
           tags: openrv-build-ubuntu
           push: false
+          cache-from: type=gha,scope=ubuntu22
+          cache-to: type=gha,mode=max,scope=ubuntu22
 
       - name: Reclaim Space Before Build (Ubuntu 22.04)
         run: |
@@ -77,11 +104,20 @@ jobs:
             -e OPENRV_TAG="${{ env.OPENRV_TAG }}" \
             -e OPENRV_REPO="${{ env.OPENRV_REPO }}" \
             -e DISTRO_SUFFIX=linux-ubuntu22.04 \
+            -e OPENRV_BUILD_CACHE_DIR=/home/rv/openrv-build-cache \
             $BMD_E $NDI_E \
             -v "${{ github.workspace }}/ci/linux:/ci:ro" \
             -v "${{ github.workspace }}/out:/out" \
+            -v "${{ github.workspace }}/openrv-build-cache-ubuntu22:/home/rv/openrv-build-cache" \
             openrv-build-ubuntu \
             /ci/build_in_container.sh 2>&1 | tee out/logs/build-linux-ubuntu22.04.log
+
+      - name: Save Ubuntu build cache (_build)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: openrv-build-cache-ubuntu22
+          key: ${{ steps.restore-ubuntu-build-cache.outputs.cache-primary-key }}
 
       - name: Upload Ubuntu logs
         if: always()

@@ -75,6 +75,19 @@ git fetch --tags
 git checkout "refs/tags/${OPENRV_TAG}"
 git submodule update --init --recursive
 
+# Wire OpenRV/_build to a mounted host cache dir when requested.
+# This allows dependency/externalproject progress to survive failed CI attempts.
+if [[ -n "${OPENRV_BUILD_CACHE_DIR:-}" ]]; then
+    echo "Using build cache dir: ${OPENRV_BUILD_CACHE_DIR}"
+    mkdir -p "${OPENRV_BUILD_CACHE_DIR}"
+    if [[ -L _build ]]; then
+        rm -f _build
+    elif [[ -d _build ]]; then
+        rm -rf _build
+    fi
+    ln -s "${OPENRV_BUILD_CACHE_DIR}" _build
+fi
+
 # Ubuntu: clear CMake and AUTOMOC state so moc paths are regenerated
 # (avoids duplicated-path include errors in generated Qt MOC files).
 if [[ "$DISTRO_SUFFIX" == *ubuntu* ]] && { [[ -f _build/CMakeCache.txt ]] || [[ -d _build/CMakeFiles ]]; }; then

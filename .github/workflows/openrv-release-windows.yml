@@ -59,8 +59,56 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
+
+      - name: Resolve upstream tag commit
+        id: upstream-sha
+        shell: pwsh
+        run: |
+          $tagRef = "refs/tags/$env:OPENRV_TAG"
+          $commit = (git ls-remote $env:OPENRV_REPO "$tagRef^{}" | ForEach-Object { ($_ -split "`t")[0] } | Select-Object -First 1)
+          if (-not $commit) {
+            $commit = (git ls-remote $env:OPENRV_REPO "$tagRef" | ForEach-Object { ($_ -split "`t")[0] } | Select-Object -First 1)
+          }
+          if (-not $commit) {
+            throw "Could not resolve upstream commit for $tagRef"
+          }
+          $short = $commit.Substring(0, 12)
+          "UPSTREAM_SHA=$commit" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "UPSTREAM_SHA_SHORT=$short" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Restore Qt cache
+        id: restore-qt-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: C:\Qt
+          key: openrv-qt-6.5.3-msvc2019_64
+
+      - name: Restore Strawberry Perl cache
+        id: restore-perl-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: C:\Strawberry
+          key: openrv-strawberryperl-v1
+
+      - name: Restore Rust cache
+        id: restore-rust-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            C:\Users\runneradmin\.cargo
+            C:\Users\runneradmin\.rustup
+          key: openrv-rust-v1
+
+      - name: Restore MSYS2 cache
+        id: restore-msys2-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: C:\msys64
+          key: openrv-msys2-v1
 
       - name: Install Qt 6.5.3
+        if: steps.restore-qt-cache.outputs.cache-hit != 'true'
         run: |
           pip install aqtinstall
           aqt install-qt windows desktop 6.5.3 win64_msvc2019_64 -O C:\Qt -m qtwebchannel qtwebengine qtwebsockets qtmultimedia qtpositioning
@@ -68,19 +116,52 @@ jobs:
           QT_HOME: C:\Qt\6.5.3\msvc2019_64
 
       - name: Install Strawberry Perl
+        if: steps.restore-perl-cache.outputs.cache-hit != 'true'
         run: choco install strawberryperl -y
 
       - name: Install Rust
+        if: steps.restore-rust-cache.outputs.cache-hit != 'true'
         run: |
           Invoke-WebRequest -Uri https://win.rustup.rs/x86_64 -OutFile rustup-init.exe -UseBasicParsing
           .\rustup-init.exe -y
         shell: pwsh
 
       - name: Install MSYS2 and build tools
+        if: steps.restore-msys2-cache.outputs.cache-hit != 'true'
         run: |
           choco install msys2 -y
           $env:Path = "C:\msys64\usr\bin;$env:Path"
           bash -lc "pacman -Sy --noconfirm --needed mingw-w64-x86_64-autotools mingw-w64-x86_64-glew mingw-w64-x86_64-libarchive mingw-w64-x86_64-make mingw-w64-x86_64-meson mingw-w64-x86_64-toolchain autoconf automake bison flex git libtool nasm p7zip patch unzip zip"
+
+      - name: Save Qt cache
+        if: always() && steps.restore-qt-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: C:\Qt
+          key: openrv-qt-6.5.3-msvc2019_64
+
+      - name: Save Strawberry Perl cache
+        if: always() && steps.restore-perl-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: C:\Strawberry
+          key: openrv-strawberryperl-v1
+
+      - name: Save Rust cache
+        if: always() && steps.restore-rust-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            C:\Users\runneradmin\.cargo
+            C:\Users\runneradmin\.rustup
+          key: openrv-rust-v1
+
+      - name: Save MSYS2 cache
+        if: always() && steps.restore-msys2-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: C:\msys64
+          key: openrv-msys2-v1
 
       - name: Setup MSVC (nmake for OpenSSL build)
         uses: microsoft/setup-msbuild@v2
@@ -121,6 +202,15 @@ jobs:
         run: .\ci\windows\build_windows.ps1 -Phase Clone -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV" -BMDDeckLinkSdkZipPath "${{ env.BMD_PATH }}" -NDISdkRoot "${{ env.NDI_ROOT }}"
         shell: pwsh
 
+      - name: Restore Windows build cache (_build)
+        id: restore-win-build-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: C:\OpenRV\_build
+          key: openrv-windows-build-${{ env.OPENRV_TAG }}-${{ env.UPSTREAM_SHA_SHORT }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            openrv-windows-build-${{ env.OPENRV_TAG }}-${{ env.UPSTREAM_SHA_SHORT }}-
+
       - name: Build OpenRV (Windows) - Python venv
         run: .\ci\windows\build_windows.ps1 -Phase Venv -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
         shell: pwsh
@@ -151,6 +241,13 @@ jobs:
             C:\OpenRV\_build_logs\*.log
             C:\OpenRV\_build\**\*.log
             C:\OpenRV\_build\**\config.log
+
+      - name: Save Windows build cache (_build)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: C:\OpenRV\_build
+          key: ${{ steps.restore-win-build-cache.outputs.cache-primary-key }}
 
       - name: Package OpenRV (Windows)
         if: success()

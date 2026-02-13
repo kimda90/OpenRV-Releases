@@ -134,17 +134,26 @@ If you build locally **without** these SDKs, you will see these CMake messages (
 To keep build times down, the workflow uses caches on all platforms:
 
 - **Linux (Rocky 9 and Ubuntu)**  
-  Docker layer cache is stored in GitHub Actions cache (`type=gha`). The first run builds the full image (base, CMake, Ninja, Python, Qt, etc.); later runs reuse layers so the image build is much faster. Only the final layers (e.g. `COPY ci/`) and the actual OpenRV compile run every time.
+  Docker layer cache is stored in GitHub Actions cache (`type=gha`). The first run builds the full image (base, CMake, Ninja, Python, Qt, etc.); later runs reuse layers so the image build is much faster.  
+  Linux jobs also restore/save a persistent OpenRV build cache directory mounted into the container as `OPENRV_BUILD_CACHE_DIR=/home/rv/openrv-build-cache`, so dependency progress in `_build` survives failed attempts for the same tag/commit.
 
 - **Windows**  
   These are cached and install steps are skipped on cache hit:
-  - **Qt 6.5.3** (`C:\Qt`) — key `openrv-qt-6.5.3-msvc2019`
-  - **Strawberry Perl** (`C:\Strawberry`) — key `openrv-strawberryperl`
-  - **Rust** (`%USERPROFILE%\.cargo`, `%USERPROFILE%\.rustup`) — key `openrv-rust`
-  - **MSYS2** (`C:\msys64`) — key `openrv-msys2-v1` (bump the key in the workflow if you change the pacman package list)
-  - **pip** — cached by `actions/setup-python` with `cache: 'pip'`
+  - **Qt 6.5.3** (`C:\Qt`) - key `openrv-qt-6.5.3-msvc2019_64`
+  - **Strawberry Perl** (`C:\Strawberry`) - key `openrv-strawberryperl-v1`
+  - **Rust** (`%USERPROFILE%\\.cargo`, `%USERPROFILE%\\.rustup`) - key `openrv-rust-v1`
+  - **MSYS2** (`C:\msys64`) - key `openrv-msys2-v1` (bump if package list changes)
+  - **pip** - cached by `actions/setup-python` with `cache: 'pip'`
 
-  The first run installs everything and populates the cache; subsequent runs restore and only run the OpenRV build.
+  Windows jobs also restore/save `C:\OpenRV\_build` keyed by OpenRV tag + upstream commit SHA so successfully built dependencies are reused across retries.
+
+### Resume behavior for new tags
+
+When a new upstream tag needs multiple reruns:
+
+- Docker images reuse Buildx GHA layer cache scopes.
+- Linux restores/saves mounted `_build` dependency cache between runs.
+- Windows restores/saves `C:\OpenRV\_build` between runs.
 
 ### Optional: Pre-built Docker images (Linux)
 
