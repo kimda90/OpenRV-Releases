@@ -147,17 +147,22 @@ set > "$tempEnv"
     $env:QT_HOME = $qtHome
     $env:CMAKE_PREFIX_PATH = $qtHome
 
-    $pythonExe = (Get-Command python -ErrorAction SilentlyContinue).Source
+    $venvPython = Join-Path $WorkDir '.venv\Scripts\python.exe'
+    if (Test-Path $venvPython) {
+        $pythonExe = $venvPython
+    } else {
+        $pythonExe = (Get-Command python -ErrorAction SilentlyContinue).Source
+    }
     if (-not $pythonExe) { throw "Python not found in PATH" }
     $pythonDir = Split-Path $pythonExe
     
     # Create a writable bin directory for shims (e.g. python3)
     $shimBinDir = Join-Path $WorkDir ".bin"
     if (-not (Test-Path $shimBinDir)) { New-Item -ItemType Directory -Path $shimBinDir -Force | Out-Null }
-    $python3Exe = Join-Path $shimBinDir 'python3.exe'
-    if (-not (Test-Path $python3Exe)) {
+    $python3Cmd = Join-Path $shimBinDir 'python3.cmd'
+    if (-not (Test-Path $python3Cmd)) {
         Write-Host "Creating python3 shim in $shimBinDir" -ForegroundColor Yellow
-        Copy-Item $pythonExe $python3Exe
+        "@echo off`r`n`"$pythonExe`" %*" | Set-Content -Path $python3Cmd -Encoding ASCII
     }
 
     # Use dedicated FFmpeg patch script (keeps this file maintainable).
@@ -330,6 +335,11 @@ function Invoke-PhaseConfigure {
     $qtHomeCmake = $qtHome -replace '\\', '/'
     $winPerlCmake = "C:/Strawberry/perl/bin"
     $shExeCmake = $envInfo.ShExe -replace '\\', '/'
+    $venvPython = Join-Path $WorkDir '.venv\Scripts\python.exe'
+    if (-not (Test-Path $venvPython)) {
+        throw "Venv Python not found at $venvPython. Run Venv phase first."
+    }
+    $venvPythonCmake = $venvPython -replace '\\', '/'
 
     # Build CMAKE_PROGRAM_PATH to ensure ALL detected MSYS2 tools are found (for flex, bison, sh, etc.)
     $msysBinPathsCmake = $envInfo.MsysBinPaths | ForEach-Object { $_ -replace '\\', '/' }
@@ -354,6 +364,8 @@ function Invoke-PhaseConfigure {
         "-A", "x64",
         "-DCMAKE_BUILD_TYPE=Release",
         "-DCMAKE_PROGRAM_PATH=$cmakeProgramPath",
+        "-DPython_EXECUTABLE=$venvPythonCmake",
+        "-DPython3_EXECUTABLE=$venvPythonCmake",
         "-DRV_DEPS_QT_LOCATION=$qtHomeCmake",
         "-DRV_VFX_PLATFORM=CY2024",
         "-DRV_DEPS_WIN_PERL_ROOT=$winPerlCmake",
