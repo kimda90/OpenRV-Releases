@@ -71,7 +71,69 @@ function(copy_import_lib canonical_name prefixed_name)
   endif()
 
   if(src STREQUAL "")
-    message(FATAL_ERROR "OpenSSL import library not found. Tried lib/lib64 for ${prefixed_name} and ${canonical_name} under ${OPENSSL_INSTALL_DIR}")
+    file(GLOB_RECURSE found_prefixed
+      "${OPENSSL_INSTALL_DIR}/*/${prefixed_name}"
+      "${OPENSSL_INSTALL_DIR}/${prefixed_name}"
+    )
+    file(GLOB_RECURSE found_canonical
+      "${OPENSSL_INSTALL_DIR}/*/${canonical_name}"
+      "${OPENSSL_INSTALL_DIR}/${canonical_name}"
+    )
+    if(found_prefixed)
+      list(GET found_prefixed 0 src)
+    elseif(found_canonical)
+      list(GET found_canonical 0 src)
+    endif()
+  endif()
+
+  if(src STREQUAL "")
+    if(prefixed_name MATCHES "ssl")
+      set(_keyword "ssl")
+    else()
+      set(_keyword "crypto")
+    endif()
+    file(GLOB_RECURSE found_keyword
+      "${OPENSSL_INSTALL_DIR}/*${_keyword}*.lib"
+    )
+    list(FILTER found_keyword EXCLUDE REGEX "static")
+    if(found_keyword)
+      list(GET found_keyword 0 src)
+    endif()
+  endif()
+
+  if(src STREQUAL "" AND DEFINED OPENSSL_SOURCE_DIR AND NOT OPENSSL_SOURCE_DIR STREQUAL "")
+    file(GLOB_RECURSE found_src_prefixed
+      "${OPENSSL_SOURCE_DIR}/*/${prefixed_name}"
+      "${OPENSSL_SOURCE_DIR}/${prefixed_name}"
+    )
+    file(GLOB_RECURSE found_src_canonical
+      "${OPENSSL_SOURCE_DIR}/*/${canonical_name}"
+      "${OPENSSL_SOURCE_DIR}/${canonical_name}"
+    )
+    if(found_src_prefixed)
+      list(GET found_src_prefixed 0 src)
+    elseif(found_src_canonical)
+      list(GET found_src_canonical 0 src)
+    endif()
+  endif()
+
+  if(src STREQUAL "" AND DEFINED OPENSSL_SOURCE_DIR AND NOT OPENSSL_SOURCE_DIR STREQUAL "")
+    if(prefixed_name MATCHES "ssl")
+      set(_keyword "ssl")
+    else()
+      set(_keyword "crypto")
+    endif()
+    file(GLOB_RECURSE found_src_keyword
+      "${OPENSSL_SOURCE_DIR}/*${_keyword}*.lib"
+    )
+    list(FILTER found_src_keyword EXCLUDE REGEX "static")
+    if(found_src_keyword)
+      list(GET found_src_keyword 0 src)
+    endif()
+  endif()
+
+  if(src STREQUAL "")
+    message(FATAL_ERROR "OpenSSL import library not found. Tried direct and recursive search for ${prefixed_name} and ${canonical_name} under ${OPENSSL_INSTALL_DIR} and OPENSSL_SOURCE_DIR=${OPENSSL_SOURCE_DIR}")
   endif()
 
   file(COPY_FILE "${src}" "${OPENSSL_LIB_DIR}/${canonical_name}" ONLY_IF_DIFFERENT)
@@ -84,7 +146,7 @@ copy_import_lib("crypto.lib" "libcrypto.lib")
     $content = Get-Content $opensslCmake -Raw
     if ($content -notmatch 'openssl_rename_importlibs\.cmake') {
         $pattern = 'COMMAND \$\{CMAKE_COMMAND\} -E copy \$\{RV_DEPS_OPENSSL_INSTALL_DIR\}/lib/libssl\.lib \$\{_lib_dir\}/ssl\.lib\s*[\r\n]+\s*COMMAND \$\{CMAKE_COMMAND\} -E copy \$\{RV_DEPS_OPENSSL_INSTALL_DIR\}/lib/libcrypto\.lib \$\{_lib_dir\}/crypto\.lib'
-        $replacement = 'COMMAND ${CMAKE_COMMAND} -DOPENSSL_INSTALL_DIR=${RV_DEPS_OPENSSL_INSTALL_DIR} -DOPENSSL_LIB_DIR=${_lib_dir} -P ${PROJECT_SOURCE_DIR}/cmake/dependencies/openssl_rename_importlibs.cmake'
+        $replacement = 'COMMAND ${CMAKE_COMMAND} -DOPENSSL_INSTALL_DIR=${RV_DEPS_OPENSSL_INSTALL_DIR} -DOPENSSL_SOURCE_DIR=${_source_dir} -DOPENSSL_LIB_DIR=${_lib_dir} -P ${PROJECT_SOURCE_DIR}/cmake/dependencies/openssl_rename_importlibs.cmake'
         $updated = [regex]::Replace($content, $pattern, $replacement)
         if ($updated -eq $content) {
             throw "openssl patch failed: expected import-lib rename commands not found in $opensslCmake"

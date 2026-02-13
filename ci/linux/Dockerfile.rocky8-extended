@@ -10,6 +10,8 @@ RUN dnf install -y \
     mesa-libGL-devel \
     libglvnd-devel \
     libdrm-devel \
+    rust \
+    cargo \
     pkg-config \
     && dnf clean all
 

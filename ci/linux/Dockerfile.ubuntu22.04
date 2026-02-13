@@ -42,6 +42,7 @@ RUN apt-get update \
     libpulse0 libpulse-mainloop-glib0 libpulse-dev \
     qtbase5-dev libreadline-dev libsqlite3-dev libsystemd-dev libudev-dev tcl-dev tcsh tk-dev \
     wget liblzma-dev yasm zip unzip zlib1g-dev pkg-config xz-utils \
+    rustc cargo \
     && rm -rf /var/lib/apt/lists/*
 
 # -----------------------------------------------------------------------------

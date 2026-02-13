@@ -17,11 +17,12 @@ index 32ea4b1..4456731 100644
 -  INSTALL_COMMAND ${_make_command} install LIBDIR=${_lib_dir} GLEW_DEST=${_install_dir}
 +  # Fix duplicate variable definitions in GLEW src/glew.c (lines 2059-2068). Skip fragile auto-gen; use pre-generated sources.
 +  PATCH_COMMAND bash -c "find <SOURCE_DIR> -name glew.c -type f -path '*/src/glew.c' -print0 | xargs -0 -r sed -i '2059,2068d'"
-+  # Archive extracts to glew-<version>/ subdirectory, so run make from there
-+  CONFIGURE_COMMAND bash -c "cd <SOURCE_DIR>/glew-${_version} && ${_make_command}"
-+  BUILD_COMMAND bash -c "cd <SOURCE_DIR>/glew-${_version} && ${_make_command} -j${_cpu_count} GLEW_DEST=${_install_dir}"
-+  INSTALL_COMMAND bash -c "cd <SOURCE_DIR>/glew-${_version} && ${_make_command} install LIBDIR=${_lib_dir} GLEW_DEST=${_install_dir}"
++  # Run from detected extracted source root (layout varies by version/archive naming)
++  CONFIGURE_COMMAND bash -c "src=<SOURCE_DIR>; for d in ${_version} glew-${_version} .; do if [ -f \"<SOURCE_DIR>/$d/Makefile\" ]; then src=\"<SOURCE_DIR>/$d\"; break; fi; done; cd \"$src\" && ${_make_command}"
++  BUILD_COMMAND bash -c "src=<SOURCE_DIR>; for d in ${_version} glew-${_version} .; do if [ -f \"<SOURCE_DIR>/$d/Makefile\" ]; then src=\"<SOURCE_DIR>/$d\"; break; fi; done; cd \"$src\" && ${_make_command} -j${_cpu_count} GLEW_DEST=${_install_dir}"
++  INSTALL_COMMAND bash -c "src=<SOURCE_DIR>; for d in ${_version} glew-${_version} .; do if [ -f \"<SOURCE_DIR>/$d/Makefile\" ]; then src=\"<SOURCE_DIR>/$d\"; break; fi; done; cd \"$src\" && ${_make_command} install LIBDIR=${_lib_dir} GLEW_DEST=${_install_dir}"
    BUILD_IN_SOURCE TRUE
    BUILD_ALWAYS FALSE
    BUILD_BYPRODUCTS ${_glew_lib}
+
 
