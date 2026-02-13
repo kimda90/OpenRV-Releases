@@ -60,6 +60,7 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
+          cache-dependency-path: ci/windows/pip-requirements.txt
 
       - name: Resolve upstream tag commit
         id: upstream-sha
@@ -110,7 +111,7 @@ jobs:
       - name: Install Qt 6.5.3
         if: steps.restore-qt-cache.outputs.cache-hit != 'true'
         run: |
-          pip install aqtinstall
+          pip install -r ci/windows/pip-requirements.txt
           aqt install-qt windows desktop 6.5.3 win64_msvc2019_64 -O C:\Qt -m qtwebchannel qtwebengine qtwebsockets qtmultimedia qtpositioning
         env:
           QT_HOME: C:\Qt\6.5.3\msvc2019_64

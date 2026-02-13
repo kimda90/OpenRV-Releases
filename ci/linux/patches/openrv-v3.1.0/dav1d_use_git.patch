@@ -1,7 +1,8 @@
+diff --git a/cmake/dependencies/dav1d.cmake b/cmake/dependencies/dav1d.cmake
+index 4f5082a..7bf6e55 100644
 --- a/cmake/dependencies/dav1d.cmake
 +++ b/cmake/dependencies/dav1d.cmake
-@@
- EXTERNALPROJECT_ADD(
+@@ -91,11 +91,10 @@ EXTERNALPROJECT_ADD(
    ${_target}
    DOWNLOAD_NAME ${_target}_${_version}.zip
    DOWNLOAD_DIR ${RV_DEPS_DOWNLOAD_DIR}

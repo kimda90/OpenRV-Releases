@@ -86,15 +86,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=rocky9
 
       - name: Build extended Docker image (vanilla + GL/devel packages)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ci/linux/Dockerfile.rocky9-cy2024
-          load: true
-          tags: openrv-build-rocky9
-          push: false
-          cache-from: type=gha,scope=rocky9-ext
-          cache-to: type=gha,mode=max,scope=rocky9-ext
+        run: docker build -f ci/linux/Dockerfile.rocky9-cy2024 -t openrv-build-rocky9 .
 
       - name: Reclaim Space Before Build (Rocky 9)
         run: |
