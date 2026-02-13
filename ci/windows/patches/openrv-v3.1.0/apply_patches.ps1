@@ -50,6 +50,50 @@ if (Test-Path $pcre2Cmake) {
     }
 }
 
+$opensslCmake = Join-Path $WorkDir 'cmake\dependencies\openssl.cmake'
+if (Test-Path $opensslCmake) {
+    $opensslRenameScript = Join-Path $WorkDir 'cmake\dependencies\openssl_rename_importlibs.cmake'
+    @'
+if(NOT DEFINED OPENSSL_INSTALL_DIR OR NOT DEFINED OPENSSL_LIB_DIR)
+  message(FATAL_ERROR "OPENSSL_INSTALL_DIR and OPENSSL_LIB_DIR are required")
+endif()
+
+function(copy_import_lib canonical_name prefixed_name)
+  set(src "")
+  if(EXISTS "${OPENSSL_INSTALL_DIR}/lib/${prefixed_name}")
+    set(src "${OPENSSL_INSTALL_DIR}/lib/${prefixed_name}")
+  elseif(EXISTS "${OPENSSL_INSTALL_DIR}/lib/${canonical_name}")
+    set(src "${OPENSSL_INSTALL_DIR}/lib/${canonical_name}")
+  elseif(EXISTS "${OPENSSL_INSTALL_DIR}/lib64/${prefixed_name}")
+    set(src "${OPENSSL_INSTALL_DIR}/lib64/${prefixed_name}")
+  elseif(EXISTS "${OPENSSL_INSTALL_DIR}/lib64/${canonical_name}")
+    set(src "${OPENSSL_INSTALL_DIR}/lib64/${canonical_name}")
+  endif()
+
+  if(src STREQUAL "")
+    message(FATAL_ERROR "OpenSSL import library not found. Tried lib/lib64 for ${prefixed_name} and ${canonical_name} under ${OPENSSL_INSTALL_DIR}")
+  endif()
+
+  file(COPY_FILE "${src}" "${OPENSSL_LIB_DIR}/${canonical_name}" ONLY_IF_DIFFERENT)
+endfunction()
+
+copy_import_lib("ssl.lib" "libssl.lib")
+copy_import_lib("crypto.lib" "libcrypto.lib")
+'@ | Set-Content -Path $opensslRenameScript -Encoding ASCII -NoNewline
+
+    $content = Get-Content $opensslCmake -Raw
+    if ($content -notmatch 'openssl_rename_importlibs\.cmake') {
+        $pattern = 'COMMAND \$\{CMAKE_COMMAND\} -E copy \$\{RV_DEPS_OPENSSL_INSTALL_DIR\}/lib/libssl\.lib \$\{_lib_dir\}/ssl\.lib\s*[\r\n]+\s*COMMAND \$\{CMAKE_COMMAND\} -E copy \$\{RV_DEPS_OPENSSL_INSTALL_DIR\}/lib/libcrypto\.lib \$\{_lib_dir\}/crypto\.lib'
+        $replacement = 'COMMAND ${CMAKE_COMMAND} -DOPENSSL_INSTALL_DIR=${RV_DEPS_OPENSSL_INSTALL_DIR} -DOPENSSL_LIB_DIR=${_lib_dir} -P ${PROJECT_SOURCE_DIR}/cmake/dependencies/openssl_rename_importlibs.cmake'
+        $updated = [regex]::Replace($content, $pattern, $replacement)
+        if ($updated -eq $content) {
+            throw "openssl patch failed: expected import-lib rename commands not found in $opensslCmake"
+        }
+        Set-Content $opensslCmake -Value $updated -NoNewline
+        Write-Host 'OpenSSL: import-lib rename now handles ssl/libssl + crypto/libcrypto (lib/lib64).' -ForegroundColor Green
+    }
+}
+
 $ffmpegTarget = Join-Path $WorkDir 'cmake\dependencies\ffmpeg.cmake'
 $ffmpegTemplate = Join-Path $PSScriptRoot 'ffmpeg_windows_patched.cmake'
 if (-not (Test-Path $ffmpegTemplate)) {
