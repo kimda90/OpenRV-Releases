@@ -131,6 +131,7 @@ apply_required_patch "${PATCH_SET_DIR}/rvcmds_rv_cfg_extra.patch"
 apply_required_patch "${PATCH_SET_DIR}/dav1d_use_git.patch"
 apply_required_patch "${PATCH_SET_DIR}/glew_2_3_0.patch"
 apply_required_patch "${PATCH_SET_DIR}/glew_prebuilt_sources.patch"
+apply_required_patch "${PATCH_SET_DIR}/python_requirements_wheels.patch"
 
 # Optional BMD and NDI: download when URLs provided and set CMake args
 echo "[3/6] Processing optional SDKs..."

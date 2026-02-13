@@ -1,0 +1,13 @@
+diff --git a/cmake/dependencies/python3.cmake b/cmake/dependencies/python3.cmake
+index 7d81318..aa7f7c4 100644
+--- a/cmake/dependencies/python3.cmake
++++ b/cmake/dependencies/python3.cmake
+@@ -347,7 +347,7 @@ LIST(
+   --no-binary
+   :all:
+   --only-binary
+-  ${_wheel_safe_packages}
++  ${_wheel_safe_packages},maturin,pydantic-core
+   -r
+   "${_requirements_output_file}"
+ )

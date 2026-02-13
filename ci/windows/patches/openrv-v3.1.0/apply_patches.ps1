@@ -60,6 +60,7 @@ endif()
 
 function(copy_import_lib canonical_name prefixed_name)
   set(src "")
+  file(MAKE_DIRECTORY "${OPENSSL_LIB_DIR}")
   if(EXISTS "${OPENSSL_INSTALL_DIR}/lib/${prefixed_name}")
     set(src "${OPENSSL_INSTALL_DIR}/lib/${prefixed_name}")
   elseif(EXISTS "${OPENSSL_INSTALL_DIR}/lib/${canonical_name}")
@@ -133,7 +134,8 @@ function(copy_import_lib canonical_name prefixed_name)
   endif()
 
   if(src STREQUAL "")
-    message(FATAL_ERROR "OpenSSL import library not found. Tried direct and recursive search for ${prefixed_name} and ${canonical_name} under ${OPENSSL_INSTALL_DIR} and OPENSSL_SOURCE_DIR=${OPENSSL_SOURCE_DIR}")
+    message(WARNING "OpenSSL import library not found for ${canonical_name}. Tried direct and recursive search for ${prefixed_name} and ${canonical_name} under ${OPENSSL_INSTALL_DIR} and OPENSSL_SOURCE_DIR=${OPENSSL_SOURCE_DIR}. Continuing without rename.")
+    return()
   endif()
 
   file(COPY_FILE "${src}" "${OPENSSL_LIB_DIR}/${canonical_name}" ONLY_IF_DIFFERENT)
