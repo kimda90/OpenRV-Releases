@@ -4,13 +4,37 @@ CI/CD that builds [Open RV](https://github.com/AcademySoftwareFoundation/OpenRV)
 
 ## Triggering a release
 
-1. Create and push a tag matching `v*` (e.g. `v3.2.1`) on the **current repository**. The workflow builds the **upstream** [AcademySoftwareFoundation/OpenRV](https://github.com/AcademySoftwareFoundation/OpenRV) at that same tag.
+Mainline is currently pinned to **OpenRV `v3.1.0`**.
+
+1. Create and push tag `v3.1.0` on the **current repository**. The workflow builds the **upstream** [AcademySoftwareFoundation/OpenRV](https://github.com/AcademySoftwareFoundation/OpenRV) at that same tag.
 2. Example:
    ```bash
-   git tag v3.2.1
-   git push origin v3.2.1
+   git tag v3.1.0
+   git push origin v3.1.0
    ```
 3. The [OpenRV Release](.github/workflows/openrv-release.yml) workflow runs: Linux (Rocky 9), Linux (Ubuntu 22.04, optional), and Windows builds, then creates a GitHub Release and attaches artifacts.
+
+## Release-to-commit pinning
+
+Each published release is tied to a specific `OpenRV-builds` commit.
+
+- This commit supports **OpenRV `v3.1.0` only**.
+- To build an older OpenRV tag, checkout the matching historical commit in this repository (from this repo's GitHub Releases/tags), then run the pipeline from that commit.
+- Current mainline tracks only the latest maintained target tag.
+
+## OpenRV 3.0.0 vs 3.1.0 (what changed for this pipeline)
+
+This branch is pinned to `v3.1.0` because upstream build internals changed in ways that affect our CI patching/scripts.
+
+- **Dependency version plumbing moved to central defaults**: many values that were hardcoded inside `cmake/dependencies/*.cmake` in `v3.0.0` are now provided through variables from defaults files (for example FFmpeg/GLEW/OpenSSL-related values).
+- **FFmpeg dependency script was refactored**: `ffmpeg.cmake` in `v3.1.0` relies on `RV_DEPS_FFMPEG_VERSION*` variables and different configure/library naming logic, so our Windows full-file FFmpeg customization had to be rebased for `v3.1.0`.
+- **`rvcmds.sh` changed significantly**: upstream alias/environment handling moved to the newer `RV_BUILD_DIR`-style flow and updated command aliases, so Linux-side patching/paths were aligned to that layout.
+- **Qt configure usage is standardized**: `v3.1.0` expects `RV_DEPS_QT_LOCATION` in configure paths used by our scripts.
+
+Practical result:
+
+- The current scripts and patch assets in this commit target `v3.1.0` only.
+- For `v3.0.0` or any other tag, use the matching historical `OpenRV-builds` commit from this repo's Releases/tags.
 
 ## Where artifacts appear
 
@@ -31,7 +55,7 @@ Archive contents are the contents of OpenRV’s `_build/stage/` directory (e.g. 
    docker build -f ci/linux/Dockerfile.rocky9 -t openrv-build-rocky9 .
    mkdir -p out
    docker run --rm \
-     -e OPENRV_TAG=v3.2.1 \
+     -e OPENRV_TAG=v3.1.0 \
      -e OPENRV_REPO=https://github.com/AcademySoftwareFoundation/OpenRV.git \
      -e DISTRO_SUFFIX=linux-rocky9 \
      -v "$(pwd)/out:/out" \
@@ -46,7 +70,7 @@ Same idea with the Ubuntu Dockerfile:
 
 ```bash
 docker build -f ci/linux/Dockerfile.ubuntu22.04 -t openrv-build-ubuntu .
-docker run --rm -e OPENRV_TAG=v3.2.1 -e DISTRO_SUFFIX=linux-ubuntu22.04 -v "$(pwd)/out:/out" openrv-build-ubuntu
+docker run --rm -e OPENRV_TAG=v3.1.0 -e DISTRO_SUFFIX=linux-ubuntu22.04 -v "$(pwd)/out:/out" openrv-build-ubuntu
 ```
 
 ### Windows
@@ -56,8 +80,8 @@ docker run --rm -e OPENRV_TAG=v3.2.1 -e DISTRO_SUFFIX=linux-ubuntu22.04 -v "$(pw
 3. Clone OpenRV to a **short path** (e.g. `C:\OpenRV`) to avoid path length limits.
 4. From PowerShell (with `QT_HOME`, `WIN_PERL`, and `PATH` set as above):
    ```powershell
-   .\ci\windows\build_windows.ps1 -Tag v3.2.1 -WorkDir C:\OpenRV
-   .\ci\windows\package_windows.ps1 -OpenRVRoot C:\OpenRV -Tag v3.2.1 -OutDir dist
+   .\ci\windows\build_windows.ps1 -Tag v3.1.0 -WorkDir C:\OpenRV
+   .\ci\windows\package_windows.ps1 -OpenRVRoot C:\OpenRV -Tag v3.1.0 -OutDir dist
    ```
 5. Output: `dist\OpenRV-<TAG>-windows-x86_64.zip`.
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build OpenRV inside container and package _build/stage to /out.
 # Env: OPENRV_TAG (required), OPENRV_REPO (default upstream), DISTRO_SUFFIX (default linux-rocky9).
-# Usage: docker run -e OPENRV_TAG=v3.2.1 -v /host/out:/out ...
+# Usage: docker run -e OPENRV_TAG=v3.1.0 -v /host/out:/out ...
 set -e
 
 # Enable verbose output for debugging
@@ -12,6 +12,7 @@ OPENRV_REPO="${OPENRV_REPO:-https://github.com/AcademySoftwareFoundation/OpenRV.
 DISTRO_SUFFIX="${DISTRO_SUFFIX:-linux-rocky9}"
 CI_SCRIPT_DIR="${CI_SCRIPT_DIR:-/ci}"
 OUT_DIR="${OUT_DIR:-/out}"
+SUPPORTED_OPENRV_TAG="v3.1.0"
 
 echo "========================================"
 echo "OpenRV Linux Build"
@@ -19,6 +20,11 @@ echo "Tag: ${OPENRV_TAG}"
 echo "Distro: ${DISTRO_SUFFIX}"
 echo "Repo: ${OPENRV_REPO}"
 echo "========================================"
+
+if [[ "${OPENRV_TAG}" != "${SUPPORTED_OPENRV_TAG}" ]]; then
+    echo "ERROR: This commit supports OpenRV ${SUPPORTED_OPENRV_TAG} only. For other tags, checkout the matching OpenRV-builds release commit."
+    exit 1
+fi
 
 # Determine work directory based on user (upstream Dockerfile uses /home/rv)
 if [[ -d /home/rv && -w /home/rv ]]; then
@@ -78,42 +84,26 @@ if [[ "$DISTRO_SUFFIX" == *ubuntu* ]] && { [[ -f _build/CMakeCache.txt ]] || [[ 
     find _build/src -type d -name '*_autogen' -exec rm -rf {} + 2>/dev/null || true
 fi
 
-# Patch rvcmds.sh to append RV_CFG_EXTRA so we can pass BMD/NDI CMake args
-echo "[2/6] Patching rvcmds.sh for RV_CFG_EXTRA support..."
-if ! grep -q 'RV_CFG_EXTRA' rvcmds.sh; then
-    # Try both patterns that might exist in different versions
-    sed -i 's/-DRV_DEPS_WIN_PERL_ROOT=\${WIN_PERL}\x27/-DRV_DEPS_WIN_PERL_ROOT=\${WIN_PERL} \${RV_CFG_EXTRA}\x27/' rvcmds.sh 2>/dev/null || true
-    sed -i 's/-DRV_VFX_PLATFORM=\${RV_VFX_PLATFORM}\x27/-DRV_VFX_PLATFORM=\${RV_VFX_PLATFORM} \${RV_CFG_EXTRA}\x27/' rvcmds.sh 2>/dev/null || true
-fi
-
-# Patch dav1d to use GIT instead of URL zip so Meson has .git for vcs_version.h (fix "fatal: not a git repository")
-# Try main-style (CONFIGURE_COMMAND split across two lines) first, then oneline-style for older tags
-_dav1d_patched=
-for _patch in "${CI_SCRIPT_DIR}/patches/dav1d_use_git.patch" "${CI_SCRIPT_DIR}/patches/dav1d_use_git_oneline.patch"; do
-    if [[ -f "${_patch}" ]]; then
-        echo "[2b/6] Patching dav1d.cmake to use GIT (fix vcs_version.h when building from release zip)..."
-        if patch -p1 --forward -r - < "${_patch}"; then
-            echo "dav1d.cmake patched successfully"
-            _dav1d_patched=1
-            break
-        fi
+apply_required_patch() {
+    local patch_path="$1"
+    local patch_name
+    patch_name="$(basename "$patch_path")"
+    echo "Applying patch: ${patch_name}"
+    if [[ ! -f "${patch_path}" ]]; then
+        echo "ERROR: Missing required patch: ${patch_path}"
+        exit 1
     fi
-done
-if [[ -z "${_dav1d_patched}" ]]; then
-    echo "WARNING: dav1d patch not applied (upstream cmake/dependencies/dav1d.cmake may have changed). Build may fail with 'fatal: not a git repository' for dav1d."
-fi
+    if ! patch -p1 --forward -r - < "${patch_path}"; then
+        echo "ERROR: Required patch failed: ${patch_name}"
+        exit 1
+    fi
+}
 
-# Upgrade GLEW to 2.3.0 (fixes duplicate variable definitions, Issue #449); no patching needed
-echo "[2c/6] Upgrading GLEW to 2.3.0..."
-GLEW_CMAKE="cmake/dependencies/glew.cmake"
-if [[ -f "$GLEW_CMAKE" ]]; then
-    sed -i 's/"e1a80a9f12d7def202d394f46e44cfced1104bfb"/"glew-2.3.0"/' "$GLEW_CMAKE"
-    sed -i 's/9bfc689dabeb4e305ce80b5b6f28bcf9/b26a202e0bda8d010ca64e6e5f9b8739/' "$GLEW_CMAKE"
-    sed -i 's/2\.2\.0/2.3.0/g' "$GLEW_CMAKE"
-    echo "GLEW upgraded to 2.3.0"
-else
-    echo "WARNING: $GLEW_CMAKE not found; GLEW version unchanged."
-fi
+PATCH_SET_DIR="${CI_SCRIPT_DIR}/patches/openrv-v3.1.0"
+echo "[2/6] Applying patch set from ${PATCH_SET_DIR}..."
+apply_required_patch "${PATCH_SET_DIR}/rvcmds_rv_cfg_extra.patch"
+apply_required_patch "${PATCH_SET_DIR}/dav1d_use_git.patch"
+apply_required_patch "${PATCH_SET_DIR}/glew_2_3_0.patch"
 
 # Optional BMD and NDI: download when URLs provided and set CMake args
 echo "[3/6] Processing optional SDKs..."
@@ -218,6 +208,7 @@ shopt -s expand_aliases 2>/dev/null || true
 # Source rvcmds.sh and run the build
 # We capture exit codes properly to handle partial failures
 source rvcmds.sh
+RV_BUILD_DIR_EFFECTIVE="${RV_BUILD_DIR:?RV_BUILD_DIR is not set by rvcmds.sh}"
 
 # Run rvsetup (creates venv and installs requirements)
 echo "Running rvsetup..."
@@ -237,9 +228,9 @@ rvcfg || {
 # bdwgc may install headers flat to include/; OpenRV expects include/gc/gc.h
 if [[ "${OPENRV_FIX_GC_INCLUDE:-1}" != "0" ]]; then
     echo "Building dependencies and fixing bdwgc include layout (OPENRV_FIX_GC_INCLUDE=${OPENRV_FIX_GC_INCLUDE:-1})..."
-    rvenv && cmake --build "${RV_BUILD}" --config Release --parallel="${RV_BUILD_PARALLELISM}" --target dependencies
-    GC_INC="${RV_BUILD}/RV_DEPS_GC/install/include"
-    if [[ -d "${RV_BUILD}/RV_DEPS_GC" ]] && [[ -f "${GC_INC}/gc.h" ]] && [[ ! -f "${GC_INC}/gc/gc.h" ]]; then
+    rvenv && cmake --build "${RV_BUILD_DIR_EFFECTIVE}" --config Release --parallel="${RV_BUILD_PARALLELISM}" --target dependencies
+    GC_INC="${RV_BUILD_DIR_EFFECTIVE}/RV_DEPS_GC/install/include"
+    if [[ -d "${RV_BUILD_DIR_EFFECTIVE}/RV_DEPS_GC" ]] && [[ -f "${GC_INC}/gc.h" ]] && [[ ! -f "${GC_INC}/gc/gc.h" ]]; then
         mkdir -p "${GC_INC}/gc"
         cp -f "${GC_INC}/gc.h" "${GC_INC}/gc/" 2>/dev/null || true
         cp -f "${GC_INC}/gc_allocator.h" "${GC_INC}/gc/" 2>/dev/null || true
@@ -250,11 +241,11 @@ fi
 # Fix OpenSSL lib path: make_openssl.py installs to lib64 for CY2024 on Linux, but openssl.cmake
 # expects install/lib when RHEL_VERBOSE is not set (e.g. on Ubuntu, which has no /etc/redhat-release).
 # Copy lib64 -> lib so the linker finds libcrypto.so.3 / libssl.so.3.
-if [[ "${RV_VFX_PLATFORM}" = "CY2024" ]] && [[ -d "${RV_BUILD}/RV_DEPS_OPENSSL/install/lib64" ]]; then
-  if [[ ! -f "${RV_BUILD}/RV_DEPS_OPENSSL/install/lib/libcrypto.so.3" ]] && [[ -f "${RV_BUILD}/RV_DEPS_OPENSSL/install/lib64/libcrypto.so.3" ]]; then
+if [[ "${RV_VFX_PLATFORM}" = "CY2024" ]] && [[ -d "${RV_BUILD_DIR_EFFECTIVE}/RV_DEPS_OPENSSL/install/lib64" ]]; then
+  if [[ ! -f "${RV_BUILD_DIR_EFFECTIVE}/RV_DEPS_OPENSSL/install/lib/libcrypto.so.3" ]] && [[ -f "${RV_BUILD_DIR_EFFECTIVE}/RV_DEPS_OPENSSL/install/lib64/libcrypto.so.3" ]]; then
     echo "Fixing OpenSSL lib path (lib64 -> lib) for CY2024 non-RHEL..."
-    mkdir -p "${RV_BUILD}/RV_DEPS_OPENSSL/install/lib"
-    cp -an "${RV_BUILD}/RV_DEPS_OPENSSL/install/lib64/"* "${RV_BUILD}/RV_DEPS_OPENSSL/install/lib/" 2>/dev/null || true
+    mkdir -p "${RV_BUILD_DIR_EFFECTIVE}/RV_DEPS_OPENSSL/install/lib"
+    cp -an "${RV_BUILD_DIR_EFFECTIVE}/RV_DEPS_OPENSSL/install/lib64/"* "${RV_BUILD_DIR_EFFECTIVE}/RV_DEPS_OPENSSL/install/lib/" 2>/dev/null || true
   fi
 fi
 
@@ -263,7 +254,7 @@ echo "Running rvbuild..."
 rvbuild || build_failed=1
 
 # On failure or missing binary, dump error logs so CI shows the real error
-RV_BIN="_build/stage/app/bin/rv"
+RV_BIN="${RV_BUILD_DIR_EFFECTIVE}/stage/app/bin/rv"
 if [[ -n "${build_failed:-}" || ! -f "$RV_BIN" ]]; then
     echo "" >&2
     echo "========================================" >&2
@@ -271,21 +262,21 @@ if [[ -n "${build_failed:-}" || ! -f "$RV_BIN" ]]; then
     echo "========================================" >&2
     
     # Check for CMake error summary
-    if [[ -f _build/error_summary.txt ]]; then
-        echo "=== _build/error_summary.txt ===" >&2
-        cat _build/error_summary.txt >&2
+    if [[ -f "${RV_BUILD_DIR_EFFECTIVE}/error_summary.txt" ]]; then
+        echo "=== ${RV_BUILD_DIR_EFFECTIVE}/error_summary.txt ===" >&2
+        cat "${RV_BUILD_DIR_EFFECTIVE}/error_summary.txt" >&2
     fi
     
     # Check for build_errors.log
-    if [[ -f _build/build_errors.log ]]; then
-        echo "=== Last 150 lines of _build/build_errors.log ===" >&2
-        tail -150 _build/build_errors.log >&2
+    if [[ -f "${RV_BUILD_DIR_EFFECTIVE}/build_errors.log" ]]; then
+        echo "=== Last 150 lines of ${RV_BUILD_DIR_EFFECTIVE}/build_errors.log ===" >&2
+        tail -150 "${RV_BUILD_DIR_EFFECTIVE}/build_errors.log" >&2
     fi
     
     # Search for ExternalProject build logs (e.g., GLEW, OpenSSL, etc.)
     echo "" >&2
     echo "=== Searching ExternalProject logs for errors ===" >&2
-    find _build -type f -name "*.log" 2>/dev/null | while read -r logfile; do
+    find "${RV_BUILD_DIR_EFFECTIVE}" -type f -name "*.log" 2>/dev/null | while read -r logfile; do
         if grep -qiE "(error|fatal|failed|undefined reference)" "$logfile" 2>/dev/null; then
             echo "" >&2
             echo "--- Errors in: $logfile ---" >&2
@@ -294,7 +285,7 @@ if [[ -n "${build_failed:-}" || ! -f "$RV_BIN" ]]; then
     done
     
     # Specifically check GLEW logs (common failure point)
-    GLEW_BUILD_LOG=$(find _build -path "*GLEW*" -name "*build*.log" 2>/dev/null | head -1)
+    GLEW_BUILD_LOG=$(find "${RV_BUILD_DIR_EFFECTIVE}" -path "*GLEW*" -name "*build*.log" 2>/dev/null | head -1)
     if [[ -n "$GLEW_BUILD_LOG" && -f "$GLEW_BUILD_LOG" ]]; then
         echo "" >&2
         echo "=== GLEW build log (last 100 lines) ===" >&2
@@ -302,12 +293,12 @@ if [[ -n "${build_failed:-}" || ! -f "$RV_BIN" ]]; then
     fi
 
     # GC (bdwgc) dependency: show install dir and logs when build failed (helps diagnose gc/gc.h missing)
-    if [[ -d _build/RV_DEPS_GC ]]; then
+    if [[ -d "${RV_BUILD_DIR_EFFECTIVE}/RV_DEPS_GC" ]]; then
         echo "" >&2
         echo "=== RV_DEPS_GC install include dir ===" >&2
-        ls -la _build/RV_DEPS_GC/install/include/ 2>/dev/null || true >&2
-        ls -la _build/RV_DEPS_GC/install/include/gc/ 2>/dev/null || true >&2
-        GC_BUILD_LOG=$(find _build -path "*RV_DEPS_GC*" -name "*.log" 2>/dev/null | head -5)
+        ls -la "${RV_BUILD_DIR_EFFECTIVE}/RV_DEPS_GC/install/include/" 2>/dev/null || true >&2
+        ls -la "${RV_BUILD_DIR_EFFECTIVE}/RV_DEPS_GC/install/include/gc/" 2>/dev/null || true >&2
+        GC_BUILD_LOG=$(find "${RV_BUILD_DIR_EFFECTIVE}" -path "*RV_DEPS_GC*" -name "*.log" 2>/dev/null | head -5)
         if [[ -n "$GC_BUILD_LOG" ]]; then
             echo "=== GC (bdwgc) build logs (last 80 lines each) ===" >&2
             for f in $GC_BUILD_LOG; do echo "--- $f ---"; tail -80 "$f" 2>/dev/null; done >&2
@@ -315,15 +306,15 @@ if [[ -n "${build_failed:-}" || ! -f "$RV_BIN" ]]; then
     fi
 
     # OpenSSL: show install lib/lib64 when build failed (helps diagnose libcrypto.so.3 not found on Ubuntu)
-    if [[ -d _build/RV_DEPS_OPENSSL ]]; then
+    if [[ -d "${RV_BUILD_DIR_EFFECTIVE}/RV_DEPS_OPENSSL" ]]; then
         echo "" >&2
         echo "=== RV_DEPS_OPENSSL install lib dirs ===" >&2
-        ls -la _build/RV_DEPS_OPENSSL/install/lib/ 2>/dev/null || true >&2
-        ls -la _build/RV_DEPS_OPENSSL/install/lib64/ 2>/dev/null || true >&2
+        ls -la "${RV_BUILD_DIR_EFFECTIVE}/RV_DEPS_OPENSSL/install/lib/" 2>/dev/null || true >&2
+        ls -la "${RV_BUILD_DIR_EFFECTIVE}/RV_DEPS_OPENSSL/install/lib64/" 2>/dev/null || true >&2
     fi
     
     # Check CMakeError.log
-    CMAKE_ERROR_LOG="_build/CMakeFiles/CMakeError.log"
+    CMAKE_ERROR_LOG="${RV_BUILD_DIR_EFFECTIVE}/CMakeFiles/CMakeError.log"
     if [[ -f "$CMAKE_ERROR_LOG" ]]; then
         echo "" >&2
         echo "=== CMakeError.log ===" >&2
@@ -350,16 +341,16 @@ case "$ARCHIVE_FORMAT" in
     xz)
         if command -v xz >/dev/null 2>&1; then
             ARCHIVE_NAME="OpenRV-${OPENRV_TAG}-${DISTRO_SUFFIX}-x86_64.tar.xz"
-            tar -C _build -cJf "${OUT_DIR}/${ARCHIVE_NAME}" stage
+            tar -C "${RV_BUILD_DIR_EFFECTIVE}" -cJf "${OUT_DIR}/${ARCHIVE_NAME}" stage
         else
             echo "WARNING: xz not found; falling back to gzip packaging."
             ARCHIVE_NAME="OpenRV-${OPENRV_TAG}-${DISTRO_SUFFIX}-x86_64.tar.gz"
-            tar -C _build -czf "${OUT_DIR}/${ARCHIVE_NAME}" stage
+            tar -C "${RV_BUILD_DIR_EFFECTIVE}" -czf "${OUT_DIR}/${ARCHIVE_NAME}" stage
         fi
         ;;
     gz|gzip)
         ARCHIVE_NAME="OpenRV-${OPENRV_TAG}-${DISTRO_SUFFIX}-x86_64.tar.gz"
-        tar -C _build -czf "${OUT_DIR}/${ARCHIVE_NAME}" stage
+        tar -C "${RV_BUILD_DIR_EFFECTIVE}" -czf "${OUT_DIR}/${ARCHIVE_NAME}" stage
         ;;
     *)
         echo "ERROR: unsupported OPENRV_ARCHIVE_FORMAT='${ARCHIVE_FORMAT}' (supported: xz, gz)"

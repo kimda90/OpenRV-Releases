@@ -3,15 +3,15 @@
 #   Strawberry Perl, Rust, MSYS2 with MinGW64 packages.
 #
 # Usage (all-in-one, local):
-#   .\build_windows.ps1 -Tag 'v3.2.1' [-WorkDir 'C:\OpenRV'] [-BMDDeckLinkSdkZipPath '...'] [-NDISdkRoot '...']
+#   .\build_windows.ps1 -Tag 'v3.1.0' [-WorkDir 'C:\OpenRV'] [-BMDDeckLinkSdkZipPath '...'] [-NDISdkRoot '...']
 #
 # Usage (phased, CI - run each phase as a separate workflow step):
-#   .\build_windows.ps1 -Tag 'v3.2.1' -Phase Clone ...
-#   .\build_windows.ps1 -Tag 'v3.2.1' -Phase Venv ...
-#   .\build_windows.ps1 -Tag 'v3.2.1' -Phase Configure ...
-#   .\build_windows.ps1 -Tag 'v3.2.1' -Phase BuildDependencies ...
-#   .\build_windows.ps1 -Tag 'v3.2.1' -Phase BuildMain ...
-#   .\build_windows.ps1 -Tag 'v3.2.1' -Phase Verify ...
+#   .\build_windows.ps1 -Tag 'v3.1.0' -Phase Clone ...
+#   .\build_windows.ps1 -Tag 'v3.1.0' -Phase Venv ...
+#   .\build_windows.ps1 -Tag 'v3.1.0' -Phase Configure ...
+#   .\build_windows.ps1 -Tag 'v3.1.0' -Phase BuildDependencies ...
+#   .\build_windows.ps1 -Tag 'v3.1.0' -Phase BuildMain ...
+#   .\build_windows.ps1 -Tag 'v3.1.0' -Phase Verify ...
 #
 # Phases: Clone, Venv, Configure, BuildDependencies, BuildMain, Verify. Default: All
 param(
@@ -27,6 +27,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+$SupportedOpenRVTag = 'v3.1.0'
 
 $buildDir = Join-Path $WorkDir '_build'
 $BuildLogDir = Join-Path $WorkDir '_build_logs'
@@ -50,6 +51,12 @@ function Write-BuildTail {
         }
         Write-Host "`n--- Last $TailLines lines of build log ---" -ForegroundColor Yellow
         $lines | Select-Object -Last $TailLines
+    }
+}
+
+function Assert-SupportedTag {
+    if ($Tag -ne $SupportedOpenRVTag) {
+        throw "This commit supports OpenRV $SupportedOpenRVTag only. For other tags, checkout the matching OpenRV-builds release commit."
     }
 }
 
@@ -303,65 +310,12 @@ function Invoke-PhaseConfigure {
     Write-Host "[Phase: Configure] CMake configure" -ForegroundColor Cyan
     if (-not (Test-Path $WorkDir)) { throw "WorkDir $WorkDir not found. Run Clone and Venv first." }
 
-    # Apply Windows build tweaks via search/replace (robust across OpenRV versions; no git apply / patch context)
-    $dav1dCmake = Join-Path $WorkDir "cmake\dependencies\dav1d.cmake"
-    if (Test-Path $dav1dCmake) {
-        $content = Get-Content $dav1dCmake -Raw
-        if ($content -notmatch '-Denable_asm=false') {
-            $content = $content -replace '-Denable_tools=false', '-Denable_tools=false -Denable_asm=false'
-            Set-Content $dav1dCmake -Value $content -NoNewline
-            Write-Host "DAV1D: added -Denable_asm=false to CONFIGURE_COMMAND." -ForegroundColor Green
-        }
+    $patchScript = Join-Path $PSScriptRoot "patches\openrv-v3.1.0\apply_patches.ps1"
+    if (-not (Test-Path $patchScript)) {
+        throw "Required patch script not found: $patchScript"
     }
-    $ffmpegCmake = Join-Path $WorkDir "cmake\dependencies\ffmpeg.cmake"
-    $ffmpegTemplate = Join-Path $PSScriptRoot "ffmpeg_windows_patched.cmake"
-    
-    if (Test-Path $ffmpegTemplate) {
-        Write-Host "FFmpeg: Overwriting ffmpeg.cmake with patched Windows template..." -ForegroundColor Cyan
-        $content = Get-Content $ffmpegTemplate -Raw
-        
-        # Inject the dynamic path to the PowerShell shim
-        $shimPath = ($env:FFMPEG_PATCH_SHIM -replace '\\', '/')
-        $content = $content -replace '@FFMPEG_PATCH_SHIM@', $shimPath
-        
-        # Inject correct MSYS2 bash path
-        $msysBinDir = $envInfo.MsysBinPaths[0] -replace '\\', '/'
-        $msysBash = "$msysBinDir/bash.exe"
-        if (-not (Test-Path $msysBash)) { $msysBash = "$msysBinDir/sh.exe" }
-        # Note: The template already has "C:/msys64/usr/bin/bash.exe", but we should update it to the detected one if different.
-        # However, for now, let's just trust the template or do a simple replace if "C:/msys64" isn't correct.
-        if ($msysBash -notmatch "C:/msys64") {
-             $content = $content.Replace('"C:/msys64/usr/bin/bash.exe"', '"' + $msysBash + '"')
-             Write-Host "FFmpeg: Updated shell path to detected: $msysBash" -ForegroundColor Gray
-        }
-
-        Set-Content $ffmpegCmake -Value $content -NoNewline
-        Write-Host "FFmpeg: patched ffmpeg.cmake successfully." -ForegroundColor Green
-    } else {
-        Write-Error "FFmpeg: Could not find patched template at $ffmpegTemplate"
-    }
-    # atomic_ops uses autoconf; with CC=cl the "C compiler cannot create executables" test fails. Use gcc for this dep only.
-    $atomicOpsCmake = Join-Path $WorkDir "cmake\dependencies\atomic_ops.cmake"
-    if (Test-Path $atomicOpsCmake) {
-        $content = Get-Content $atomicOpsCmake -Raw
-        if ($content -notmatch 'CC=gcc CXX=g\+\+ \$\{_configure_command\}') {
-            $content = $content -replace 'CONFIGURE_COMMAND \$\{_autogen_command\} && \$\{_configure_command\} \$\{_configure_args\}', 'CONFIGURE_COMMAND "$${CMAKE_COMMAND}" -E env CC=gcc CXX=g++ $${_autogen_command} && "$${CMAKE_COMMAND}" -E env CC=gcc CXX=g++ $${_configure_command} $${_configure_args}'
-            Set-Content $atomicOpsCmake -Value $content -NoNewline
-            Write-Host "atomic_ops: CONFIGURE_COMMAND now uses gcc for both autogen and configure." -ForegroundColor Green
-        }
-    }
-
-    # pcre2 uses autoconf/make; with CC=cl the configure tests fail. Use gcc for this dep only.
-    $pcre2Cmake = Join-Path $WorkDir "cmake\dependencies\pcre2.cmake"
-    if (Test-Path $pcre2Cmake) {
-        $content = Get-Content $pcre2Cmake -Raw
-        if ($content -notmatch 'CC=gcc CXX=g\+\+') {
-            $content = $content -replace 'CONFIGURE_COMMAND \$\{_pcre2_autogen_command\} && \$\{_pcre2_configure_command\} \$\{_pcre2_configure_args\}', 'CONFIGURE_COMMAND "$${CMAKE_COMMAND}" -E env CC=gcc CXX=g++ $${_pcre2_autogen_command} && "$${CMAKE_COMMAND}" -E env CC=gcc CXX=g++ $${_pcre2_configure_command} $${_pcre2_configure_args}'
-            $content = $content -replace 'BUILD_COMMAND make -j\$\{_cpu_count\}', 'BUILD_COMMAND "$${CMAKE_COMMAND}" -E env CC=gcc CXX=g++ make -j$${_cpu_count}'
-            Set-Content $pcre2Cmake -Value $content -NoNewline
-            Write-Host "pcre2: CONFIGURE_COMMAND/BUILD_COMMAND now use gcc." -ForegroundColor Green
-        }
-    }
+    & $patchScript -WorkDir $WorkDir -EnvInfo $envInfo -PatchShimPath $env:FFMPEG_PATCH_SHIM
+    if ($LASTEXITCODE -ne 0) { throw "Applying v3.1.0 patch set failed." }
 
     $cmakeExtraArgs = @()
     if ($BMDDeckLinkSdkZipPath -and (Test-Path $BMDDeckLinkSdkZipPath)) {
@@ -400,7 +354,7 @@ function Invoke-PhaseConfigure {
         "-A", "x64",
         "-DCMAKE_BUILD_TYPE=Release",
         "-DCMAKE_PROGRAM_PATH=$cmakeProgramPath",
-        "-DRV_DEPS_QT6_LOCATION=$qtHomeCmake",
+        "-DRV_DEPS_QT_LOCATION=$qtHomeCmake",
         "-DRV_VFX_PLATFORM=CY2024",
         "-DRV_DEPS_WIN_PERL_ROOT=$winPerlCmake",
         "-DSH_EXECUTABLE=$shExeCmake"
@@ -519,6 +473,8 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "OpenRV Windows Build" -ForegroundColor Cyan
 Write-Host "Tag: $Tag | Phase: $Phase | WorkDir: $WorkDir" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
+
+Assert-SupportedTag
 
 if ($Phase -notin @('Clone', 'Venv')) {
     $envInfo = Initialize-BuildEnv
