@@ -101,10 +101,10 @@ else
     mkdir -p _build
 fi
 
-# Ubuntu: clear CMake and AUTOMOC state so moc paths are regenerated
-# (avoids duplicated-path include errors in generated Qt MOC files).
-if [[ "$DISTRO_SUFFIX" == *ubuntu* ]] && { [[ -f _build/CMakeCache.txt ]] || [[ -d _build/CMakeFiles ]]; }; then
-    echo "Clearing CMake and AUTOMOC state for Ubuntu (fix TwkQtChat include path)..."
+# Clear stale CMake/AUTOGEN state from cached _build so Qt moc files are regenerated
+# with valid include paths across distro/image/toolchain changes.
+if [[ -f _build/CMakeCache.txt ]] || [[ -d _build/CMakeFiles ]]; then
+    echo "Clearing stale CMake and AUTOMOC state in _build cache..."
     rm -f _build/CMakeCache.txt
     rm -rf _build/CMakeFiles
     find _build/src -type d -name '*_autogen' -exec rm -rf {} + 2>/dev/null || true

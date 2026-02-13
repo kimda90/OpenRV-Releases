@@ -208,9 +208,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: C:\OpenRV\_build
-          key: openrv-windows-build-${{ env.OPENRV_TAG }}-${{ env.UPSTREAM_SHA_SHORT }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: openrv-windows-build-v2-${{ env.OPENRV_TAG }}-${{ env.UPSTREAM_SHA_SHORT }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            openrv-windows-build-${{ env.OPENRV_TAG }}-${{ env.UPSTREAM_SHA_SHORT }}-
+            openrv-windows-build-v2-${{ env.OPENRV_TAG }}-${{ env.UPSTREAM_SHA_SHORT }}-
 
       - name: Build OpenRV (Windows) - Python venv
         run: .\ci\windows\build_windows.ps1 -Phase Venv -Tag "${{ env.OPENRV_TAG }}" -WorkDir "C:\OpenRV"
@@ -244,7 +244,7 @@ jobs:
             C:\OpenRV\_build\**\config.log
 
       - name: Save Windows build cache (_build)
-        if: always()
+        if: success()
         uses: actions/cache/save@v4
         with:
           path: C:\OpenRV\_build

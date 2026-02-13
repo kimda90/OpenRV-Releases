@@ -54,6 +54,55 @@ function Write-BuildTail {
     }
 }
 
+function Reset-StaleOpenSSLDependencyState {
+    param([string]$BuildDirPath)
+
+    $opensslRoot = Join-Path $BuildDirPath 'RV_DEPS_OPENSSL'
+    if (-not (Test-Path $opensslRoot)) { return }
+
+    $candidateLibs = @(
+        (Join-Path $opensslRoot 'install\lib\libssl.lib'),
+        (Join-Path $opensslRoot 'install\lib\ssl.lib'),
+        (Join-Path $opensslRoot 'install\lib\libcrypto.lib'),
+        (Join-Path $opensslRoot 'install\lib\crypto.lib'),
+        (Join-Path $opensslRoot 'install\lib64\libssl.lib'),
+        (Join-Path $opensslRoot 'install\lib64\ssl.lib'),
+        (Join-Path $opensslRoot 'install\lib64\libcrypto.lib'),
+        (Join-Path $opensslRoot 'install\lib64\crypto.lib')
+    )
+    $hasImportLib = $false
+    foreach ($lib in $candidateLibs) {
+        if (Test-Path $lib) { $hasImportLib = $true; break }
+    }
+    if ($hasImportLib) { return }
+
+    Write-Host "OpenSSL cache state is incomplete (no import libs found). Resetting RV_DEPS_OPENSSL to force rebuild..." -ForegroundColor Yellow
+    $cleanupTargets = @(
+        (Join-Path $BuildDirPath 'RV_DEPS_OPENSSL'),
+        (Join-Path $BuildDirPath 'cmake\dependencies\RV_DEPS_OPENSSL-prefix')
+    )
+    foreach ($target in $cleanupTargets) {
+        if (Test-Path $target) {
+            Remove-Item -Recurse -Force $target -ErrorAction SilentlyContinue
+        }
+    }
+
+    # Remove stale stamp files/directories that can trick ExternalProject into skipping build/install.
+    Get-ChildItem -Path (Join-Path $BuildDirPath 'cmake\dependencies') -Recurse -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match 'RV_DEPS_OPENSSL|rv_deps_openssl' } |
+        ForEach-Object {
+            try {
+                if ($_.PSIsContainer) {
+                    Remove-Item -Recurse -Force $_.FullName -ErrorAction Stop
+                } else {
+                    Remove-Item -Force $_.FullName -ErrorAction Stop
+                }
+            } catch {
+                # Best-effort cleanup; build step will still attempt OpenSSL dependency.
+            }
+        }
+}
+
 function Assert-SupportedTag {
     if ($Tag -ne $SupportedOpenRVTag) {
         throw "This commit supports OpenRV $SupportedOpenRVTag only. For other tags, checkout the matching OpenRV-builds release commit."
@@ -388,6 +437,7 @@ function Invoke-PhaseConfigure {
 function Invoke-PhaseBuildDependencies {
     Write-Host "[Phase: BuildDependencies] Building dependencies target" -ForegroundColor Cyan
     if (-not (Test-Path $buildDir)) { throw "Build dir not found. Run Configure first." }
+    Reset-StaleOpenSSLDependencyState -BuildDirPath $buildDir
 
     New-Item -ItemType Directory -Path $BuildLogDir -Force | Out-Null
     $logFile = Join-Path $BuildLogDir "build_dependencies.log"
